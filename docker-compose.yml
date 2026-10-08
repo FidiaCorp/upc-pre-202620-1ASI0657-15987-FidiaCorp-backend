@@ -1,0 +1,55 @@
+services:
+  # ----------------------------------------------------------------------------
+  # Base de Datos Transaccional PostgreSQL 16
+  # ----------------------------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    container_name: credicasa-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: credicasa_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgrespassword
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./src/main/resources/db/migration/V1__init_schema.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d credicasa_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - credicasa-network
+
+  # ----------------------------------------------------------------------------
+  # Microservicio Core: mortgage-calculation-service
+  # ----------------------------------------------------------------------------
+  credicasa-backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: credicasa-backend-service
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/credicasa_db
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: postgrespassword
+      JWT_SECRET: CrediCasaFidiaCorpSuperSecureJwtSigningKey2026Secure256BitsMinimum
+      JWT_EXPIRATION_MS: 86400000
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - credicasa-network
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  credicasa-network:
+    driver: bridge
