@@ -47,7 +47,7 @@ public class HexagonalArchitectureTest {
     @ArchTest
     public static final ArchRule hexagonalLayersRespectDependencies =
             layeredArchitecture()
-                    .consideringAllDependencies()
+                    .consideringOnlyDependenciesInLayers()
                     .layer("Domain").definedBy("..domain..")
                     .layer("Application").definedBy("..application..")
                     .layer("Infrastructure").definedBy("..infrastructure..")

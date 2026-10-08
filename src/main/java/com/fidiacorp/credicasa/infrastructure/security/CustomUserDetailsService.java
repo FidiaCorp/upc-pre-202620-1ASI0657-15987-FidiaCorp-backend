@@ -15,47 +15,40 @@ import java.util.Map;
 
 /**
  * Driver 1: Seguridad (ASR-SEC) - Control de Roles RBAC
- * Provee los usuarios del sistema CrediCasa con contraseñas encriptadas con BCrypt:
- * - ROLE_CLIENT: Comprador de vivienda buscando simular y evaluar su crédito hipotecario.
+ * Provee los usuarios del sistema CrediCasa con contrasenas encriptadas con BCrypt:
+ * - ROLE_CLIENT: Comprador de vivienda buscando simular y evaluar su credito hipotecario.
  * - ROLE_REALTOR: Asesor inmobiliario en sala de ventas gestionando cotizaciones con clientes.
  */
 @Service
 public class CustomUserDetailsService implements UserDetailsService {
 
-    private final Map<String, UserDetails> inMemoryUsers = new HashMap<>();
+    private final Map<String, String> userPasswords = new HashMap<>();
+    private final Map<String, List<SimpleGrantedAuthority>> userRoles = new HashMap<>();
 
     public CustomUserDetailsService(PasswordEncoder passwordEncoder) {
-        // Usuario 1: ROLE_CLIENT (Comprador de vivienda)
-        inMemoryUsers.put("cliente@credicasa.pe", User.builder()
-                .username("cliente@credicasa.pe")
-                .password(passwordEncoder.encode("Cliente123!"))
-                .authorities(Collections.singletonList(new SimpleGrantedAuthority("ROLE_CLIENT")))
-                .build());
+        userPasswords.put("cliente@credicasa.pe", passwordEncoder.encode("Cliente123!"));
+        userRoles.put("cliente@credicasa.pe", Collections.singletonList(new SimpleGrantedAuthority("ROLE_CLIENT")));
 
-        // Usuario 2: ROLE_REALTOR (Asesor inmobiliario en sala de ventas)
-        inMemoryUsers.put("asesor@credicasa.pe", User.builder()
-                .username("asesor@credicasa.pe")
-                .password(passwordEncoder.encode("Asesor123!"))
-                .authorities(Collections.singletonList(new SimpleGrantedAuthority("ROLE_REALTOR")))
-                .build());
+        userPasswords.put("asesor@credicasa.pe", passwordEncoder.encode("Asesor123!"));
+        userRoles.put("asesor@credicasa.pe", Collections.singletonList(new SimpleGrantedAuthority("ROLE_REALTOR")));
 
-        // Usuario 3: Administrador con ambos roles
-        inMemoryUsers.put("admin@credicasa.pe", User.builder()
-                .username("admin@credicasa.pe")
-                .password(passwordEncoder.encode("Admin123!"))
-                .authorities(List.of(
-                        new SimpleGrantedAuthority("ROLE_CLIENT"),
-                        new SimpleGrantedAuthority("ROLE_REALTOR")
-                ))
-                .build());
+        userPasswords.put("admin@credicasa.pe", passwordEncoder.encode("Admin123!"));
+        userRoles.put("admin@credicasa.pe", List.of(
+                new SimpleGrantedAuthority("ROLE_CLIENT"),
+                new SimpleGrantedAuthority("ROLE_REALTOR")
+        ));
     }
 
     @Override
     public UserDetails loadUserByUsername(String email) throws UsernameNotFoundException {
-        UserDetails user = inMemoryUsers.get(email.toLowerCase().trim());
-        if (user == null) {
+        String key = email != null ? email.toLowerCase().trim() : "";
+        String password = userPasswords.get(key);
+        List<SimpleGrantedAuthority> authorities = userRoles.get(key);
+
+        if (password == null || authorities == null) {
             throw new UsernameNotFoundException("Usuario no encontrado con correo: " + email);
         }
-        return user;
+
+        return new User(key, password, authorities);
     }
 }
