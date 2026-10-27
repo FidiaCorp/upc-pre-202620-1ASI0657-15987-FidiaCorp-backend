@@ -179,15 +179,27 @@ credicasa-backend/
 
 ---
 
-## 4. Credenciales de Prueba (RBAC)
+## 4. Cuentas persistentes y perfil (US02)
 
-El sistema provee usuarios de prueba precargados con contraseñas encriptadas con **BCrypt**:
+No se crean cuentas de demostración al iniciar. Registre una cuenta mediante
+`POST /api/v1/auth/register` con `firstName`, `lastName`, `email` y `password`.
+El registro público asigna únicamente `ROLE_CLIENT`; no permite elegir roles.
+Las cuentas se conservan en PostgreSQL y las contraseñas se almacenan con BCrypt.
 
-| Rol | Correo Electrónico | Contraseña | Descripción de Acceso |
-| :--- | :--- | :--- | :--- |
-| **`ROLE_CLIENT`** | `cliente@credicasa.pe` | `Cliente123!` | Comprador de vivienda. Puede simular créditos hipotecarios y comparar ofertas bancarias. |
-| **`ROLE_REALTOR`** | `asesor@credicasa.pe` | `Asesor123!` | Asesor inmobiliario en sala de ventas. Acceso a simulación comercial y cotizaciones. |
-| **`ADMIN`** (Ambos) | `admin@credicasa.pe` | `Admin123!` | Acceso completo a todos los endpoints. |
+Los nombres son obligatorios (máximo 100 caracteres), el correo es válido, único,
+normalizado a minúsculas y tiene máximo 254 caracteres. La contraseña requiere
+entre 12 y 72 caracteres y no debe superar 72 bytes UTF-8.
+
+Con el token, `GET /api/v1/users/me` obtiene el perfil y `PUT /api/v1/users/me`
+actualiza `firstName`, `lastName` y `email` (todos obligatorios). La respuesta es
+`{id, firstName, lastName, email, roles}`. El UUID del token permanece estable al
+cambiar el correo; los próximos inicios de sesión utilizan el correo nuevo.
+Los errores de validación devuelven 400 con `validationErrors`, los correos
+ocupados 409 y el acceso sin sesión válida 401.
+
+La tabla `accounts` se genera con el `ddl-auto=update` actual. El archivo
+`V2__accounts.sql` documenta el DDL para instalaciones con gestión manual del
+esquema; el proyecto no ejecuta Flyway automáticamente.
 
 ---
 
@@ -229,8 +241,8 @@ Una vez iniciado el microservicio, la documentación interactiva Swagger está a
 > **Especificación OpenAPI (JSON):** [http://localhost:8080/v3/api-docs](http://localhost:8080/v3/api-docs)
 
 Para probar endpoints protegidos desde Swagger:
-1. Dirigirse al endpoint `POST /api/v1/auth/login`.
-2. Autenticarse con `cliente@credicasa.pe` / `Cliente123!`.
+1. Registrar una cuenta en `POST /api/v1/auth/register`.
+2. Autenticarse en `POST /api/v1/auth/login` con el correo y contraseña registrados.
 3. Copiar el `token` devuelto.
 4. Hacer clic en el botón superior **Authorize** (candado) y pegar el token.
 
@@ -238,14 +250,23 @@ Para probar endpoints protegidos desde Swagger:
 
 ## 7. Guía Rápida de Consumo de APIs (cURL)
 
-### 1. Iniciar Sesión y Obtener Token JWT
+### 1. Registrar cuenta e iniciar sesión
+
+```bash
+curl -X POST "http://localhost:8080/api/v1/auth/register" \
+  -H "Content-Type: application/json" \
+  -d '{"firstName":"Lucía","lastName":"Pérez","email":"lucia@example.com","password":"MiClaveSegura2026!"}'
+```
+
+Use una contraseña propia. Después solicite el token:
+
 
 ```bash
 curl -X POST "http://localhost:8080/api/v1/auth/login" \
   -H "Content-Type: application/json" \
   -d '{
-    "email": "asesor@credicasa.pe",
-    "password": "Asesor123!"
+    "email": "lucia@example.com",
+    "password": "MiClaveSegura2026!"
   }'
 ```
 
@@ -254,8 +275,8 @@ curl -X POST "http://localhost:8080/api/v1/auth/login" \
 {
   "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
   "type": "Bearer",
-  "email": "asesor@credicasa.pe",
-  "roles": ["ROLE_REALTOR"],
+  "email": "lucia@example.com",
+  "roles": ["ROLE_CLIENT"],
   "expiresIn": 86400000
 }
 ```

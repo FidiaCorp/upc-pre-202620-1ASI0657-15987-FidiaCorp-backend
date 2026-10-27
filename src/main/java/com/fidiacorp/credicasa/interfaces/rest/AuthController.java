@@ -57,7 +57,7 @@ public class AuthController {
         return ResponseEntity.ok(new AuthResponseDto(
                 token,
                 "Bearer",
-                userDetails.getUsername(),
+                request.email().trim().toLowerCase(java.util.Locale.ROOT),
                 roles,
                 tokenProvider.getExpirationMs()
         ));

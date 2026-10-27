@@ -1,54 +1,28 @@
 package com.fidiacorp.credicasa.infrastructure.security;
-
+import com.fidiacorp.credicasa.domain.model.Account;
+import com.fidiacorp.credicasa.domain.ports.out.AccountRepositoryPort;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
-import org.springframework.security.core.userdetails.User;
-import org.springframework.security.core.userdetails.UserDetails;
-import org.springframework.security.core.userdetails.UserDetailsService;
-import org.springframework.security.core.userdetails.UsernameNotFoundException;
-import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.core.userdetails.*;
 import org.springframework.stereotype.Service;
-
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-
-/**
- * Driver 1: Seguridad (ASR-SEC) - Control de Roles RBAC
- * Provee los usuarios del sistema CrediCasa con contrasenas encriptadas con BCrypt:
- * - ROLE_CLIENT: Comprador de vivienda buscando simular y evaluar su credito hipotecario.
- * - ROLE_REALTOR: Asesor inmobiliario en sala de ventas gestionando cotizaciones con clientes.
- */
+import java.util.Locale;
+import java.util.UUID;
 @Service
 public class CustomUserDetailsService implements UserDetailsService {
-
-    private final Map<String, String> userPasswords = new HashMap<>();
-    private final Map<String, List<SimpleGrantedAuthority>> userRoles = new HashMap<>();
-
-    public CustomUserDetailsService(PasswordEncoder passwordEncoder) {
-        userPasswords.put("cliente@credicasa.pe", passwordEncoder.encode("Cliente123!"));
-        userRoles.put("cliente@credicasa.pe", Collections.singletonList(new SimpleGrantedAuthority("ROLE_CLIENT")));
-
-        userPasswords.put("asesor@credicasa.pe", passwordEncoder.encode("Asesor123!"));
-        userRoles.put("asesor@credicasa.pe", Collections.singletonList(new SimpleGrantedAuthority("ROLE_REALTOR")));
-
-        userPasswords.put("admin@credicasa.pe", passwordEncoder.encode("Admin123!"));
-        userRoles.put("admin@credicasa.pe", List.of(
-                new SimpleGrantedAuthority("ROLE_CLIENT"),
-                new SimpleGrantedAuthority("ROLE_REALTOR")
-        ));
-    }
-
+    private final AccountRepositoryPort repository;
+    public CustomUserDetailsService(AccountRepositoryPort repository) { this.repository = repository; }
     @Override
-    public UserDetails loadUserByUsername(String email) throws UsernameNotFoundException {
-        String key = email != null ? email.toLowerCase().trim() : "";
-        String password = userPasswords.get(key);
-        List<SimpleGrantedAuthority> authorities = userRoles.get(key);
-
-        if (password == null || authorities == null) {
-            throw new UsernameNotFoundException("Usuario no encontrado con correo: " + email);
-        }
-
-        return new User(key, password, authorities);
+    public UserDetails loadUserByUsername(String email) {
+        return toUser(repository.findByEmail(email.trim().toLowerCase(Locale.ROOT))
+            .orElseThrow(() -> new UsernameNotFoundException("Credenciales inválidas.")));
+    }
+    public UserDetails loadById(String id) {
+        try {
+            return toUser(repository.findById(UUID.fromString(id))
+                .orElseThrow(() -> new UsernameNotFoundException("Cuenta no encontrada.")));
+        } catch (IllegalArgumentException ex) { throw new UsernameNotFoundException("Cuenta no encontrada.", ex); }
+    }
+    private UserDetails toUser(Account account) {
+        return new User(account.id().toString(), account.passwordHash(), account.roles().stream()
+            .map(SimpleGrantedAuthority::new).toList());
     }
 }
