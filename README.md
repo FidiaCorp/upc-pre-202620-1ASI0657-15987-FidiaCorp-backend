@@ -230,8 +230,8 @@ Flujo con `Authorization: Bearer <token>`:
 Para una cuenta activa, `POST /api/v1/auth/login` acepta `{email,password,otp}`.
 La contraseña se valida primero; sin el segundo factor válido no se emite JWT.
 La respuesta de éxito mantiene `{token,type,email,roles,expiresIn}`. Las sesiones
-JWT emitidas previamente conservan su vigencia; su revocación se gestiona por
-separado de esta implementación.
+JWT emitidas previamente conservan su vigencia hasta expirar o cerrar la sesión
+mediante `/api/v1/auth/logout`; activar 2FA no revoca otras sesiones.
 
 Los errores 2FA incluyen `code` además de `status`, `error`, `message`, `timestamp`
 y `validationErrors`. Login sin código devuelve 401 `TWO_FACTOR_REQUIRED`;
@@ -265,6 +265,48 @@ consultar el estado, perfil o una configuración activa.
 Pruebas `TotpSecurityTest` y `TwoFactorIntegrationTest`: vectores oficiales RFC,
 contador de 64 bits, cifrado, clave ausente/incorrecta, reloj fijo, vencimientos,
 consumo concurrente, bloqueo persistente y autorización antes de emitir JWT.
+
+---
+
+### Cierre de sesión y revocación del token actual
+
+`POST /api/v1/auth/logout`, sin cuerpo y con `Authorization: Bearer <token>`,
+revoca la sesión presentada y devuelve **204 sin contenido**. Este endpoint
+requiere autenticación incluso dentro del prefijo público `/auth`.
+Un token ausente, inválido, expirado o ya revocado devuelve 401.
+
+Solo se revoca ese token: otras sesiones de la misma cuenta permanecen válidas.
+Cada nuevo JWT incluye un `jti` aleatorio, por lo que ingresar inmediatamente
+después del cierre genera un token diferente. Los campos de la respuesta de
+login no cambian. El servidor ignora cualquier token o identificador enviado
+en el cuerpo de logout; utiliza exclusivamente el Bearer autenticado.
+
+La tabla `revoked_tokens` conserva únicamente el hash SHA-256 y la expiración
+del JWT, nunca el token completo. El filtro consulta esta revocación persistente
+en cada petición con un JWT válido; reiniciar el servicio no restaura tokens
+revocados mientras se conserve la base de datos. Dos cierres concurrentes del
+mismo token no generan registros duplicados. Una solicitud que ya superó la
+validación antes del cierre puede terminar; las verificaciones posteriores
+rechazan el token revocado.
+
+La limpieza programada elimina registros expirados cada hora. Puede ajustar el
+intervalo con `app.security.jwt.revocation-cleanup-ms` (milisegundos). El JWT
+expirado se rechaza aunque su registro aún no se haya eliminado. El archivo
+`V4__token_revocation.sql` incluye el DDL para gestión manual del esquema; la
+configuración actual crea la tabla mediante Hibernate `ddl-auto=update`.
+
+Ante un fallo de red o de servidor, el cliente no puede asumir que la revocación
+se completó. Debe eliminar la sesión local y puede reintentar el cierre de ese
+mismo token sin restaurar su acceso. Si el servidor responde 401, ese token ya
+no permite acceso autenticado.
+
+CORS expone `Retry-After` además de `Authorization`, permitiendo que la UI lea
+la espera real del bloqueo 2FA en llamadas entre orígenes. Las pruebas cubren el
+preflight autenticado y la exposición de esa cabecera en una respuesta 429.
+
+`SessionLogoutIntegrationTest` verifica aislamiento entre sesiones, hash y
+expiración persistidos, lectura desde una nueva instancia del servicio, tokens
+inmediatos distintos, concurrencia, limpieza de expirados y CORS.
 
 ---
 

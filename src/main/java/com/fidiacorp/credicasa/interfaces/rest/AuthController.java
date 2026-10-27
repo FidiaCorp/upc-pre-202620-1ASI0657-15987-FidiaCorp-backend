@@ -30,11 +30,24 @@ public class AuthController {
     private final AuthenticationManager authenticationManager;
     private final JwtTokenProvider tokenProvider;
     private final com.fidiacorp.credicasa.application.usecase.TwoFactorService twoFactor;
+    private final com.fidiacorp.credicasa.application.usecase.TokenRevocationService revocations;
 
-    public AuthController(AuthenticationManager authenticationManager, JwtTokenProvider tokenProvider, com.fidiacorp.credicasa.application.usecase.TwoFactorService twoFactor) {
+    public AuthController(AuthenticationManager authenticationManager, JwtTokenProvider tokenProvider, com.fidiacorp.credicasa.application.usecase.TwoFactorService twoFactor,
+                          com.fidiacorp.credicasa.application.usecase.TokenRevocationService revocations) {
         this.authenticationManager = authenticationManager;
         this.tokenProvider = tokenProvider;
         this.twoFactor = twoFactor;
+        this.revocations = revocations;
+    }
+
+    @PostMapping("/logout")
+    @Operation(summary="Cerrar la sesión actual", description="Revoca únicamente el JWT Bearer presentado.")
+    public ResponseEntity<Void> logout(java.security.Principal principal,
+            @org.springframework.web.bind.annotation.RequestHeader("Authorization") String authorization) {
+        String token=authorization.substring(7);
+        revocations.revoke(java.util.UUID.fromString(principal.getName()), token,
+            tokenProvider.getExpirationFromToken(token));
+        return ResponseEntity.noContent().build();
     }
 
     @PostMapping("/login")
