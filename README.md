@@ -384,6 +384,102 @@ para gestión manual; el despliegue actual usa Hibernate `ddl-auto=update`.
 
 ---
 
+### Ofertas DEMO por destinatario y avisos en la aplicación
+
+Las ofertas de este incremento son **demostraciones**, identificadas siempre
+con `origin:"DEMO"`. Seleccionar BCP o Interbank no implica que ese banco haya
+emitido, aprobado ni financiado un crédito. No se llama a APIs bancarias reales.
+Los nombres y títulos se derivan del código de banco del lado del servidor.
+
+`POST /api/v1/offers` requiere `ROLE_REALTOR`, una propiedad activa del propio
+asesor y un destinatario registrado con `ROLE_CLIENT`. El emisor se obtiene del
+UUID autenticado y el destinatario se resuelve por correo normalizado; no se
+aceptan identidades, origen, títulos ni identificadores de simulación del cuerpo.
+Solicitud (respuesta 201 con `Location`):
+
+```json
+{
+  "recipientEmail": "cliente@example.com",
+  "propertyId": "UUID_DEL_INMUEBLE_PROPIO",
+  "bankCode": "BCP",
+  "loanAmount": "200000.00",
+  "currency": "PEN",
+  "annualInterestRate": "0.085",
+  "termMonths": 240,
+  "startDate": "2027-01-01"
+}
+```
+
+La moneda debe ser `PEN` o `USD` e igual a la del inmueble. El préstamo es
+positivo, con máximo 16 enteros y 2 decimales, y no puede superar el precio.
+`annualInterestRate` es TEA decimal estricta, mayor que 0 y menor o igual que 1,
+con hasta 8 decimales: `"0.085"` significa 8.5%; `"8.5"` se rechaza, no se convierte.
+`termMonths` es obligatorio entre 1 y 360; `startDate` es una fecha ISO obligatoria.
+`bankCode` admite exclusivamente `BCP` e `INTERBANK`.
+
+La respuesta contiene
+`{id,recipientId,issuerId,bankCode,bankName,title,origin,property,loanAmount,currency,annualInterestRate,termMonths,startDate,simulationId,createdAt}`.
+`property` es la instantánea `{id,title,address,price,currency}`, copiada al emitir;
+permanece disponible aunque el inmueble se elimine del catálogo.
+Montos y tasa se devuelven como **cadenas decimales exactas**, incluido el monto
+máximo `"9999999999999999.99"`. `simulationId` es `null` en esta etapa; no se
+simula una asociación ni se modifica el motor de cálculo.
+
+`GET /api/v1/offers?page=0&size=20` devuelve únicamente ofertas recibidas por el
+principal actual, con `{items,page,size,totalElements,totalPages}`.
+`GET /api/v1/offers/{id}` permite consultar solo al destinatario, incluso cuando
+el consultante es el emisor. Un tercero recibe 404 sin detalles del recurso.
+Los roles CLIENT y REALTOR pueden consultar sus propias bandejas; el registro
+público conserva exclusivamente el rol CLIENT y no concede permisos de emisión.
+
+La emisión guarda oferta y aviso en la **misma transacción**: si falla uno,
+ninguno queda persistido. Cada oferta genera exactamente un aviso por su ID.
+
+`GET /api/v1/notifications?unreadOnly=false&page=0&size=20` devuelve
+`{items,page,size,totalElements,totalPages,unreadCount}`. `unreadCount` es el total
+sin leer del usuario, independiente de la página o filtro. Un aviso contiene
+`{id,offerId,type:"CREDIT_OFFER",origin:"DEMO",title,createdAt,readAt}`.
+`readAt` comienza en `null`. `PATCH /api/v1/notifications/{id}/read`, sin cuerpo,
+devuelve 200 con ese aviso marcado como leído. Repetirlo conserva el primer
+instante de lectura, incluso con solicitudes concurrentes; un aviso ajeno o
+inexistente devuelve 404. No hay operaciones para marcar avisos de otros usuarios.
+
+Las listas ordenan `createdAt DESC,id DESC`, usan páginas desde 0 y tamaño por
+defecto 20, mínimo 1 y máximo 100. Consultas y detalles privados envían
+`Cache-Control: no-store`. El cliente consultará la bandeja de avisos cada
+**5 segundos** mientras mantenga una sesión activa y la aplicación esté visible;
+el aviso se descubre sin recargar manualmente. No se implementa SSE ni push.
+Esta tarea proporciona el contrato de polling; su integración visual pertenece
+al frontend. El intervalo observado se comprueba en sus pruebas de navegador.
+
+Sin sesión se recibe 401, sin rol de emisión 403, por inmueble ajeno 403, por
+recurso o destinatario no disponible 404 y por entradas inválidas 400. Una propiedad
+ya eliminada no permite generar ofertas nuevas; las anteriores conservan su
+instantánea.
+
+**Provisionamiento administrativo:** no existen asesores precargados ni un
+endpoint público para asignar roles. Para una demostración local, un administrador
+puede registrar primero una cuenta con credenciales propias y asignarle el rol
+mediante acceso autorizado a su base de datos, por ejemplo:
+
+```sql
+-- Solo en la base de demostración administrada; sustituya el correo registrado.
+UPDATE accounts SET roles = 'ROLE_REALTOR' WHERE email = 'asesor-demo@example.com';
+```
+
+Después se inicia sesión de nuevo y se registra un inmueble con esa cuenta.
+El cliente destinatario utiliza una cuenta distinta con el rol de registro
+normal. Esta instrucción no crea usuarios ni contraseñas de demostración en
+producción y no se ejecuta automáticamente.
+
+`V6__credit_offers_and_notifications.sql` documenta el DDL para administración
+manual; la configuración actual usa Hibernate `ddl-auto=update`.
+`CreditOfferIntegrationTest` cubre privacidad por destinatario, atomicidad ante
+fallo de inserción del aviso, roles y propietario, términos inválidos, precisión
+máxima, instantánea tras eliminar el inmueble, paginación y lectura concurrente.
+
+---
+
 ## 5. Instrucciones de Ejecución
 
 ### Opción A: Despliegue con Docker Compose (Recomendada)
