@@ -106,6 +106,34 @@ public class RestExceptionHandler {
             ex.getMessage(), LocalDateTime.now(), null, ex.code()));
     }
 
+    @ExceptionHandler(com.fidiacorp.credicasa.domain.model.PropertyNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handlePropertyNotFound(RuntimeException ex) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ErrorResponse(404,"Not Found",
+            ex.getMessage(),LocalDateTime.now(),null));
+    }
+
+    @ExceptionHandler(jakarta.validation.ConstraintViolationException.class)
+    public ResponseEntity<ErrorResponse> handleQueryValidation(jakarta.validation.ConstraintViolationException ex) {
+        Map<String,String> errors=new HashMap<>();
+        ex.getConstraintViolations().forEach(v -> errors.put(v.getPropertyPath().toString(),v.getMessage()));
+        return ResponseEntity.badRequest().body(new ErrorResponse(400,"Bad Request",
+            "Parámetros de consulta inválidos.",LocalDateTime.now(),errors));
+    }
+
+    @ExceptionHandler(org.springframework.web.method.annotation.MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidQueryType(Exception ex) {
+        return ResponseEntity.badRequest().body(new ErrorResponse(400,"Bad Request",
+            "El formato de un parámetro no es válido.",LocalDateTime.now(),null));
+    }
+
+    @ExceptionHandler(org.springframework.web.HttpRequestMethodNotSupportedException.class)
+    public ResponseEntity<ErrorResponse> handleUnsupportedMethod(org.springframework.web.HttpRequestMethodNotSupportedException ex) {
+        var response=ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED);
+        if(ex.getSupportedMethods()!=null)response.header("Allow",String.join(", ",ex.getSupportedMethods()));
+        return response.body(new ErrorResponse(405,"Method Not Allowed",
+            "La operación solicitada no está disponible.",LocalDateTime.now(),null));
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> handleGeneralException(Exception ex) {
         ErrorResponse response = new ErrorResponse(

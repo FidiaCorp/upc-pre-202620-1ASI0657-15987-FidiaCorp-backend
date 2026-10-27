@@ -310,6 +310,80 @@ inmediatos distintos, concurrencia, limpieza de expirados y CORS.
 
 ---
 
+### Catálogo persistente de inmuebles
+
+Los endpoints `/api/v1/properties` requieren JWT y rol `ROLE_CLIENT` o
+`ROLE_REALTOR`. Ambos roles pueden registrar inmuebles y consultar el catálogo;
+ningún rol puede eliminar un inmueble de otro propietario.
+
+`POST /api/v1/properties` devuelve **201** con cabecera `Location`. Solicitud:
+
+```json
+{
+  "title": "Departamento con terraza",
+  "address": "Av. Central 120, Lima",
+  "description": "Departamento luminoso cerca de servicios",
+  "price": "250000.50",
+  "currency": "PEN",
+  "tags": ["terraza", "estacionamiento"]
+}
+```
+
+`title` y `address` son obligatorios, se recortan y admiten hasta 120 y 250
+caracteres respectivamente. `description` es opcional, máximo 2000 caracteres,
+y se conserva como cadena vacía si no se envía. `price` debe ser al menos 0.01,
+con hasta 16 dígitos enteros y 2 decimales; acepta número JSON o cadena decimal
+para evitar pérdida de precisión en clientes JavaScript. `currency` solo admite
+`PEN` y `USD`. `tags` es opcional, máximo 20 elementos de hasta 40 caracteres;
+no admite etiquetas vacías. Se normalizan con Unicode NFKC, minúsculas, recorte
+y espacios internos únicos; se eliminan duplicados y se ordenan. Por ejemplo,
+`[" ＴＥＲＲＡＺＡ ","terraza","Con   Estacionamiento"]` se guarda como
+`["con estacionamiento","terraza"]`.
+
+El propietario se obtiene exclusivamente del UUID del principal autenticado;
+un `ownerId` enviado en el cuerpo no cambia esa identidad. La respuesta de
+registro y `GET /api/v1/properties/{id}` contienen
+`{id,ownerId,title,address,description,price,currency,tags,createdAt}`.
+`price` siempre se devuelve como cadena decimal exacta, incluido el máximo
+`"9999999999999999.99"`; el cliente no debe convertirlo a `Number` para transportarlo.
+`createdAt` utiliza ISO8601 con zona UTC. El UUID propio está disponible en
+`GET /api/v1/users/me`; los clientes pueden compararlo con `ownerId`.
+
+`GET /api/v1/properties` admite:
+
+- `q`: búsqueda literal sin distinguir mayúsculas en título, dirección o
+  descripción; máximo 120 caracteres. `%`, `_` y barras invertidas no son
+  comodines SQL. Un término vacío no filtra.
+- `tags`: parámetros repetidos, por ejemplo
+  `?tags=terraza&tags=estacionamiento`. Se normalizan igual que al registrar y
+  se exigen **todas** las etiquetas seleccionadas, con un máximo de 20.
+- `mine=true`: limita el catálogo al usuario autenticado; por defecto `false`.
+- `page`: página desde 0; `size`: por defecto 20 y entre 1 y 100.
+
+Texto, etiquetas, propietario y estado activo se combinan con AND. El orden es
+`createdAt DESC, id DESC`, estable entre páginas. Respuesta:
+
+```json
+{"items":[],"page":0,"size":20,"totalElements":0,"totalPages":0}
+```
+
+`DELETE /api/v1/properties/{id}` devuelve **204** solo para el propietario. Un
+tercero recibe 403 y no modifica datos. La eliminación establece `deletedAt`:
+el inmueble deja de aparecer en consultas, filtros y detalle. Un ID inexistente
+o eliminado, incluido un segundo intento de eliminación, devuelve 404. Cancelar
+la confirmación en la interfaz no debe enviar DELETE. No se expone PUT ni PATCH.
+
+Las cotizaciones mantienen sus instantáneas independientes: no se cambian
+`PropertySnapshot`, `Quotation`, cronogramas ni importes al eliminar del
+catálogo. La prueba de integración compara una simulación persistida antes y
+después de eliminar el inmueble.
+
+Entradas inválidas y paginación fuera de límites devuelven 400; token ausente o
+inválido 401; rol no permitido 403. `V5__properties.sql` incluye tablas e índices
+para gestión manual; el despliegue actual usa Hibernate `ddl-auto=update`.
+
+---
+
 ## 5. Instrucciones de Ejecución
 
 ### Opción A: Despliegue con Docker Compose (Recomendada)
