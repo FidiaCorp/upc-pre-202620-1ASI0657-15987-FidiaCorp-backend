@@ -77,12 +77,30 @@ public class RestExceptionHandler {
         return ResponseEntity.status(HttpStatus.FORBIDDEN).body(response);
     }
 
+    @ExceptionHandler(com.fidiacorp.credicasa.domain.model.EmailAlreadyRegisteredException.class)
+    public ResponseEntity<ErrorResponse> handleDuplicateEmail(RuntimeException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(new ErrorResponse(409, "Conflict",
+            ex.getMessage(), LocalDateTime.now(), Map.of("email", ex.getMessage())));
+    }
+
+    @ExceptionHandler(org.springframework.http.converter.HttpMessageNotReadableException.class)
+    public ResponseEntity<ErrorResponse> handleMalformedBody(Exception ex) {
+        return ResponseEntity.badRequest().body(new ErrorResponse(400, "Bad Request",
+            "El cuerpo de la solicitud no es válido.", LocalDateTime.now(), null));
+    }
+
+    @ExceptionHandler(org.springframework.orm.ObjectOptimisticLockingFailureException.class)
+    public ResponseEntity<ErrorResponse> handleConcurrentUpdate(Exception ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(new ErrorResponse(409, "Conflict",
+            "El perfil cambió. Vuelva a cargarlo e intente otra vez.", LocalDateTime.now(), null));
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> handleGeneralException(Exception ex) {
         ErrorResponse response = new ErrorResponse(
                 HttpStatus.INTERNAL_SERVER_ERROR.value(),
                 "Internal Server Error",
-                ex.getMessage(),
+                "No se pudo completar la solicitud.",
                 LocalDateTime.now(),
                 null
         );
