@@ -134,6 +134,12 @@ public class RestExceptionHandler {
             "La operación solicitada no está disponible.",LocalDateTime.now(),null));
     }
 
+    @ExceptionHandler(com.fidiacorp.credicasa.domain.model.OfferResourceNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleOfferResourceNotFound(RuntimeException ex) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ErrorResponse(404,"Not Found",
+            ex.getMessage(),LocalDateTime.now(),null));
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> handleGeneralException(Exception ex) {
         ErrorResponse response = new ErrorResponse(
