@@ -54,6 +54,7 @@ public class JwtTokenProvider {
         return Jwts.builder()
                 .claims(claims)
                 .subject(userDetails.getUsername())
+                .id(java.util.UUID.randomUUID().toString())
                 .issuedAt(now)
                 .expiration(expiryDate)
                 .signWith(signingKey)
@@ -83,6 +84,10 @@ public class JwtTokenProvider {
             log.error("La cadena de claims JWT está vacía: {}", e.getMessage());
         }
         return false;
+    }
+
+    public java.time.Instant getExpirationFromToken(String token) {
+        return getClaims(token).getExpiration().toInstant();
     }
 
     public long getExpirationMs() {

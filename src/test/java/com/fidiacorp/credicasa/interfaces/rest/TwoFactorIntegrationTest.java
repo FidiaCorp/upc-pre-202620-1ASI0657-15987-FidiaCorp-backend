@@ -66,7 +66,8 @@ class TwoFactorIntegrationTest {
     private ResultActions login(String otp)throws Exception {
         Map<String,String> data=new HashMap<>(Map.of("email",EMAIL,"password",PASSWORD));
         if(otp!=null)data.put("otp",otp);
-        return mvc.perform(post("/api/v1/auth/login").contentType(MediaType.APPLICATION_JSON).content(body(data)));
+        return mvc.perform(post("/api/v1/auth/login").header("Origin","http://localhost:5173")
+            .contentType(MediaType.APPLICATION_JSON).content(body(data)));
     }
     private String code(){return totp.code(secret,clock.instant().getEpochSecond()/30);}
     private String wrongCode(){return code().startsWith("0")?"1"+code().substring(1):"0"+code().substring(1);}
@@ -115,7 +116,8 @@ class TwoFactorIntegrationTest {
     @Test void persistsThrottleAcrossRequestsBlocksSetupAndResetsAfterWindowAndSuccess()throws Exception {
         enable();clock.advance(30);
         for(int i=0;i<4;i++) login(wrongCode()).andExpect(status().isUnauthorized());
-        login(wrongCode()).andExpect(status().isTooManyRequests()).andExpect(header().string("Retry-After","900"));
+        login(wrongCode()).andExpect(status().isTooManyRequests()).andExpect(header().string("Retry-After","900"))
+            .andExpect(header().string("Access-Control-Expose-Headers",org.hamcrest.Matchers.containsString("Retry-After")));
         assertThat(states.findById(id).orElseThrow().failedAttempts).isEqualTo(5);
         login(null).andExpect(status().isTooManyRequests()).andExpect(jsonPath("token").doesNotExist());
         login(code()).andExpect(status().isTooManyRequests());

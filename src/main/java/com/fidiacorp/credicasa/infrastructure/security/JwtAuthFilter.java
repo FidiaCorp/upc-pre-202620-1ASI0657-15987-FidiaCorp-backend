@@ -24,10 +24,13 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
     private final JwtTokenProvider tokenProvider;
     private final CustomUserDetailsService userDetailsService;
+    private final com.fidiacorp.credicasa.application.usecase.TokenRevocationService revocations;
 
-    public JwtAuthFilter(JwtTokenProvider tokenProvider, CustomUserDetailsService userDetailsService) {
+    public JwtAuthFilter(JwtTokenProvider tokenProvider, CustomUserDetailsService userDetailsService,
+                         com.fidiacorp.credicasa.application.usecase.TokenRevocationService revocations) {
         this.tokenProvider = tokenProvider;
         this.userDetailsService = userDetailsService;
+        this.revocations = revocations;
     }
 
     @Override
@@ -37,7 +40,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         String jwt = parseJwt(request);
 
         try {
-            if (StringUtils.hasText(jwt) && tokenProvider.validateToken(jwt)) {
+            if (StringUtils.hasText(jwt) && tokenProvider.validateToken(jwt) && !revocations.isRevoked(jwt)) {
                 String accountId = tokenProvider.getUsernameFromToken(jwt);
                 UserDetails userDetails = userDetailsService.loadById(accountId);
                 UsernamePasswordAuthenticationToken authentication =

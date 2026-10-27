@@ -57,6 +57,8 @@ public class SecurityConfig {
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
+                        // Logout must be authenticated before the public auth wildcard.
+                        .requestMatchers("/api/v1/auth/logout").authenticated()
                         // Rutas públicas: Autenticación, Documentación Swagger OpenAPI
                         .requestMatchers(
                                 "/api/v1/auth/**",
@@ -84,7 +86,7 @@ public class SecurityConfig {
         config.setAllowedOriginPatterns(List.of("http://localhost:5173", "http://localhost:3000", "*"));
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"));
         config.setAllowedHeaders(List.of("Authorization", "Content-Type", "Accept", "X-Requested-With"));
-        config.setExposedHeaders(List.of("Authorization"));
+        config.setExposedHeaders(List.of("Authorization", "Retry-After"));
         config.setAllowCredentials(true);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
