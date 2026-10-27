@@ -29,10 +29,12 @@ public class AuthController {
 
     private final AuthenticationManager authenticationManager;
     private final JwtTokenProvider tokenProvider;
+    private final com.fidiacorp.credicasa.application.usecase.TwoFactorService twoFactor;
 
-    public AuthController(AuthenticationManager authenticationManager, JwtTokenProvider tokenProvider) {
+    public AuthController(AuthenticationManager authenticationManager, JwtTokenProvider tokenProvider, com.fidiacorp.credicasa.application.usecase.TwoFactorService twoFactor) {
         this.authenticationManager = authenticationManager;
         this.tokenProvider = tokenProvider;
+        this.twoFactor = twoFactor;
     }
 
     @PostMapping("/login")
@@ -48,6 +50,7 @@ public class AuthController {
         );
 
         UserDetails userDetails = (UserDetails) authentication.getPrincipal();
+        twoFactor.verifyLogin(java.util.UUID.fromString(userDetails.getUsername()), request.otp());
         String token = tokenProvider.generateToken(userDetails);
 
         List<String> roles = userDetails.getAuthorities().stream()

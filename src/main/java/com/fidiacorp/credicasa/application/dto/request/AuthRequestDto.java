@@ -13,6 +13,9 @@ public record AuthRequestDto(
 
         @Schema(description = "Contraseña en texto plano", example = "Asesor123!")
         @NotBlank(message = "La contraseña es obligatoria")
-        String password
+        String password,
+
+        @Schema(description = "Código TOTP de seis dígitos cuando la cuenta tiene 2FA activo")
+        @jakarta.validation.constraints.Size(max=64) String otp
 ) {
 }

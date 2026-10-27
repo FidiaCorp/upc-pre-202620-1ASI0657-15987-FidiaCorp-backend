@@ -34,6 +34,8 @@ spring:
 
 app:
   security:
+    two-factor:
+      encryption-key: ${TWO_FACTOR_ENCRYPTION_KEY:}
     jwt:
       secret: ${JWT_SECRET:CrediCasaFidiaCorpSuperSecureJwtSigningKey2026Secure256BitsMinimum}
       expiration-ms: ${JWT_EXPIRATION_MS:86400000}

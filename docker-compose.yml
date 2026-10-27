@@ -40,6 +40,7 @@ services:
       SPRING_DATASOURCE_PASSWORD: postgrespassword
       JWT_SECRET: CrediCasaFidiaCorpSuperSecureJwtSigningKey2026Secure256BitsMinimum
       JWT_EXPIRATION_MS: 86400000
+      TWO_FACTOR_ENCRYPTION_KEY: ${TWO_FACTOR_ENCRYPTION_KEY:-}
     depends_on:
       postgres:
         condition: service_healthy
