@@ -95,6 +95,17 @@ public class RestExceptionHandler {
             "El perfil cambió. Vuelva a cargarlo e intente otra vez.", LocalDateTime.now(), null));
     }
 
+    public record TwoFactorErrorResponse(int status, String error, String message,
+            LocalDateTime timestamp, Map<String,String> validationErrors, String code) {}
+
+    @ExceptionHandler(com.fidiacorp.credicasa.domain.model.TwoFactorException.class)
+    public ResponseEntity<TwoFactorErrorResponse> handleTwoFactor(com.fidiacorp.credicasa.domain.model.TwoFactorException ex) {
+        var response = ResponseEntity.status(ex.status());
+        if(ex.retryAfterSeconds()>0) response.header("Retry-After", Long.toString(ex.retryAfterSeconds()));
+        return response.body(new TwoFactorErrorResponse(ex.status(), HttpStatus.valueOf(ex.status()).getReasonPhrase(),
+            ex.getMessage(), LocalDateTime.now(), null, ex.code()));
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> handleGeneralException(Exception ex) {
         ErrorResponse response = new ErrorResponse(

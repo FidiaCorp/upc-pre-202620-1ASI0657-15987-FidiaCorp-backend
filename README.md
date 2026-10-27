@@ -203,6 +203,71 @@ esquema; el proyecto no ejecuta Flyway automáticamente.
 
 ---
 
+### Verificación en dos pasos (TOTP)
+
+Configure `TWO_FACTOR_ENCRYPTION_KEY` con una clave aleatoria de **32 bytes en
+Base64**, almacenada en el gestor de secretos del despliegue y conservada entre
+reinicios. Puede generar una clave con `openssl rand -base64 32`; no la registre
+en Git, logs ni documentación. Sin una clave válida el servicio mantiene las
+cuentas normales disponibles, pero setup y validación de secretos 2FA devuelven
+503 `TWO_FACTOR_UNAVAILABLE`. Cambiar o perder esta clave impide descifrar los
+secretos existentes; no existe clave predeterminada ni recuperación automática.
+Docker Compose admite inyectarla con la variable del mismo nombre.
+
+Flujo con `Authorization: Bearer <token>`:
+
+- `GET /api/v1/users/me/two-factor` devuelve `{enabled, pending}`, sin secretos.
+- `POST /api/v1/users/me/two-factor/setup` con `{password}` devuelve
+  `{secret, otpauthUri, expiresIn:600}` y `Cache-Control: no-store`. Introduzca
+  el secreto manualmente en su autenticador o importe la URI compatible.
+  Antes de activar puede regenerar la configuración: la anterior deja de servir.
+  Esta operación exige contraseña correcta y no reinicia los intentos fallidos.
+- `POST /api/v1/users/me/two-factor/confirm` con `{otp}` activa la configuración
+  pendiente antes de los diez minutos y devuelve `{enabled:true,pending:false}`.
+- `POST /api/v1/users/me/two-factor/disable` con `{password,otp}` exige contraseña
+  y un código nuevo, y devuelve `{enabled:false,pending:false}`.
+
+Para una cuenta activa, `POST /api/v1/auth/login` acepta `{email,password,otp}`.
+La contraseña se valida primero; sin el segundo factor válido no se emite JWT.
+La respuesta de éxito mantiene `{token,type,email,roles,expiresIn}`. Las sesiones
+JWT emitidas previamente conservan su vigencia; su revocación se gestiona por
+separado de esta implementación.
+
+Los errores 2FA incluyen `code` además de `status`, `error`, `message`, `timestamp`
+y `validationErrors`. Login sin código devuelve 401 `TWO_FACTOR_REQUIRED`;
+código incorrecto, expirado o reutilizado devuelve 401 `TWO_FACTOR_INVALID`.
+Contraseña incorrecta en gestión devuelve 401 `INVALID_CREDENTIALS`; estos
+errores de validación no implican que el JWT presentado haya expirado.
+Setup ya activo devuelve 409 `TWO_FACTOR_ALREADY_ENABLED`, desactivación sin
+2FA activo 409 `TWO_FACTOR_NOT_ENABLED`, y confirmación vencida 400
+`TWO_FACTOR_SETUP_EXPIRED`. Cuerpos mal formados o campos inválidos devuelven 400
+con el formato de validación habitual.
+
+Cinco fallos de OTP o de contraseña de gestión bloquean las operaciones 2FA y
+los nuevos ingresos durante quince minutos: 429 `TWO_FACTOR_LOCKED` con
+`Retry-After` en segundos. Intentos y bloqueo son persistentes, compartidos por
+cuenta y no se reinician al regenerar setup ni al abrir una sesión nueva.
+Confirmar, ingresar con segundo factor o desactivar correctamente reinicia los
+fallos. Los errores de contraseña del login primario mantienen la autenticación
+habitual y no incrementan este contador específico del segundo factor.
+
+El algoritmo sigue [RFC 6238](https://www.rfc-editor.org/rfc/rfc6238.html):
+HMAC-SHA1, secreto aleatorio de 20 bytes, seis dígitos y pasos de 30 segundos.
+Solo se admite el paso actual, sin tolerancia para códigos expirados ni futuros;
+sincronice el reloj del servidor y del autenticador. Cada código se consume una
+sola vez, incluso entre solicitudes concurrentes, mediante bloqueo transaccional
+y contador persistente. Después de confirmar o ingresar espere al siguiente
+código antes de otra operación. Los secretos se cifran en reposo con AES-256-GCM,
+nonce aleatorio y UUID de la cuenta como datos autenticados. El secreto legible
+solo se devuelve al generar una configuración pendiente; no se devuelve al
+consultar el estado, perfil o una configuración activa.
+
+Pruebas `TotpSecurityTest` y `TwoFactorIntegrationTest`: vectores oficiales RFC,
+contador de 64 bits, cifrado, clave ausente/incorrecta, reloj fijo, vencimientos,
+consumo concurrente, bloqueo persistente y autorización antes de emitir JWT.
+
+---
+
 ## 5. Instrucciones de Ejecución
 
 ### Opción A: Despliegue con Docker Compose (Recomendada)
