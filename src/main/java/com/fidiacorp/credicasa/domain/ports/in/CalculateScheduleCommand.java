@@ -23,6 +23,14 @@ public record CalculateScheduleCommand(
         LocalDate startDate,
         ClientProfile clientProfile,
         PropertySnapshot propertySnapshot,
-        BigDecimal discountRateAnnual
+        BigDecimal discountRateAnnual,
+        java.util.UUID ownerId
 ) {
+    public CalculateScheduleCommand(BigDecimal loanAmount,Currency currency,int termMonths,BigDecimal annualInterestRate,
+        GracePeriod gracePeriod,BalloonPayment balloonPayment,BigDecimal lifeInsuranceRate,BigDecimal propertyInsuranceRate,
+        BigDecimal propertyValue,BigDecimal monthlyAdminFee,LocalDate startDate,ClientProfile clientProfile,
+        PropertySnapshot propertySnapshot,BigDecimal discountRateAnnual) {
+        this(loanAmount,currency,termMonths,annualInterestRate,gracePeriod,balloonPayment,lifeInsuranceRate,
+            propertyInsuranceRate,propertyValue,monthlyAdminFee,startDate,clientProfile,propertySnapshot,discountRateAnnual,null);
+    }
 }
