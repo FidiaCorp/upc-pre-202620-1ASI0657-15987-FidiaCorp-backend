@@ -9,7 +9,8 @@ public class GracePeriod {
 
     public GracePeriod(GracePeriodType type, int months) {
         this.type = type != null ? type : GracePeriodType.NONE;
-        this.months = Math.max(0, months);
+        if(months<0)throw new IllegalArgumentException("Los meses de gracia no pueden ser negativos.");
+        this.months = months;
     }
 
     public static GracePeriod none() {

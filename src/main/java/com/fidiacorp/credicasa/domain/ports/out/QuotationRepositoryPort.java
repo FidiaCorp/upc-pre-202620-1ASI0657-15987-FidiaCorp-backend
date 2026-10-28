@@ -9,5 +9,6 @@ import java.util.UUID;
 public interface QuotationRepositoryPort {
     Quotation save(Quotation quotation);
     Optional<Quotation> findById(UUID id);
+    Optional<Quotation> findByIdAndOwnerId(UUID id,UUID ownerId);
     List<Quotation> findAll();
 }

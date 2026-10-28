@@ -14,4 +14,6 @@ public interface QuotationJpaRepository extends JpaRepository<QuotationJpaEntity
 
     @Query("SELECT q FROM QuotationJpaEntity q LEFT JOIN FETCH q.installments WHERE q.id = :id")
     Optional<QuotationJpaEntity> findByIdWithInstallments(@Param("id") UUID id);
+    @Query("SELECT q FROM QuotationJpaEntity q LEFT JOIN FETCH q.installments WHERE q.id = :id AND q.ownerId = :owner")
+    Optional<QuotationJpaEntity> findOwnedWithInstallments(@Param("id") UUID id,@Param("owner") UUID owner);
 }

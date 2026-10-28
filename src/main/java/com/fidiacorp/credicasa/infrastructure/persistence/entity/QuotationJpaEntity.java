@@ -10,6 +10,7 @@ import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.OneToMany;
+import jakarta.persistence.OrderBy;
 import jakarta.persistence.Table;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -32,7 +33,14 @@ public class QuotationJpaEntity {
     @Id
     private UUID id;
 
-    @Column(name = "loan_amount", precision = 18, scale = 2, nullable = false)
+    // Nullable only for historical rows: unowned rows are never exposed through REST.
+    @Column(name="owner_id") private UUID ownerId;
+    @Column(name="property_id") private UUID propertyId;
+    @Column(name="client_id") private UUID clientId;
+    @Column(name="discount_rate_used",precision=38,scale=24) private BigDecimal discountRateUsed;
+
+
+    @Column(name = "loan_amount", precision = 38, scale = 2, nullable = false)
     private BigDecimal loanAmount;
 
     @Enumerated(EnumType.STRING)
@@ -42,7 +50,7 @@ public class QuotationJpaEntity {
     @Column(name = "term_months", nullable = false)
     private int termMonths;
 
-    @Column(name = "annual_interest_rate", precision = 10, scale = 6, nullable = false)
+    @Column(name = "annual_interest_rate", precision = 38, scale = 24, nullable = false)
     private BigDecimal annualInterestRate;
 
     @Enumerated(EnumType.STRING)
@@ -52,57 +60,57 @@ public class QuotationJpaEntity {
     @Column(name = "grace_period_months", nullable = false)
     private int gracePeriodMonths;
 
-    @Column(name = "balloon_amount", precision = 18, scale = 2)
+    @Column(name = "balloon_amount", precision = 38, scale = 2)
     private BigDecimal balloonAmount;
 
     @Column(name = "balloon_month")
     private Integer balloonMonth;
 
-    @Column(name = "life_insurance_rate", precision = 10, scale = 6)
+    @Column(name = "life_insurance_rate", precision = 38, scale = 24)
     private BigDecimal lifeInsuranceRate;
 
-    @Column(name = "property_insurance_rate", precision = 10, scale = 6)
+    @Column(name = "property_insurance_rate", precision = 38, scale = 24)
     private BigDecimal propertyInsuranceRate;
 
-    @Column(name = "property_value", precision = 18, scale = 2)
+    @Column(name = "property_value", precision = 38, scale = 2)
     private BigDecimal propertyValue;
 
-    @Column(name = "monthly_admin_fee", precision = 18, scale = 2)
+    @Column(name = "monthly_admin_fee", precision = 38, scale = 2)
     private BigDecimal monthlyAdminFee;
 
     @Column(name = "start_date", nullable = false)
     private LocalDate startDate;
 
     // Financial Metrics
-    @Column(name = "tea", precision = 10, scale = 6, nullable = false)
+    @Column(name = "tea", precision = 38, scale = 24, nullable = false)
     private BigDecimal tea;
 
-    @Column(name = "tem", precision = 10, scale = 6, nullable = false)
+    @Column(name = "tem", precision = 38, scale = 24, nullable = false)
     private BigDecimal tem;
 
-    @Column(name = "monthly_tir", precision = 12, scale = 8, nullable = false)
+    @Column(name = "monthly_tir", precision = 60, scale = 24, nullable = false)
     private BigDecimal monthlyTir;
 
-    @Column(name = "tcea", precision = 10, scale = 6, nullable = false)
+    @Column(name = "tcea", precision = 280, scale = 24, nullable = false)
     private BigDecimal tcea;
 
-    @Column(name = "van", precision = 18, scale = 2, nullable = false)
+    @Column(name = "van", precision = 38, scale = 2, nullable = false)
     private BigDecimal van;
 
-    @Column(name = "total_interest", precision = 18, scale = 2, nullable = false)
+    @Column(name = "total_interest", precision = 38, scale = 2, nullable = false)
     private BigDecimal totalInterest;
 
-    @Column(name = "total_cost", precision = 18, scale = 2, nullable = false)
+    @Column(name = "total_cost", precision = 38, scale = 2, nullable = false)
     private BigDecimal totalCost;
 
     // Client Snapshot
     @Column(name = "client_doc", length = 30)
     private String clientDoc;
 
-    @Column(name = "client_name", length = 150)
+    @Column(name = "client_name", length = 201)
     private String clientName;
 
-    @Column(name = "client_email", length = 100)
+    @Column(name = "client_email", length = 254)
     private String clientEmail;
 
     // Property Snapshot
@@ -116,6 +124,7 @@ public class QuotationJpaEntity {
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
 
+    @OrderBy("installmentNumber ASC")
     @OneToMany(mappedBy = "quotation", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<InstallmentJpaEntity> installments = new ArrayList<>();
 

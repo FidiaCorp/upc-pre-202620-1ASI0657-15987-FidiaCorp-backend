@@ -14,8 +14,17 @@ import java.util.UUID;
 @PreAuthorize("hasAnyRole('CLIENT','REALTOR')")
 public class CreditOfferController {
     private final CreditOfferService service;
-    public CreditOfferController(CreditOfferService service) {this.service=service;}
+    private final com.fidiacorp.credicasa.application.usecase.OfferScheduleService schedules;
+    public CreditOfferController(CreditOfferService service,com.fidiacorp.credicasa.application.usecase.OfferScheduleService schedules) {this.service=service;this.schedules=schedules;}
     private UUID id(Principal p) {return UUID.fromString(p.getName());}
+    @PostMapping("/{offerId}/schedule")
+    public ResponseEntity<SimulationResponseDto> generateSchedule(Principal p,@PathVariable UUID offerId) {
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(schedules.generate(id(p),offerId));
+    }
+    @GetMapping("/{offerId}/schedule")
+    public ResponseEntity<SimulationResponseDto> getSchedule(Principal p,@PathVariable UUID offerId) {
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(schedules.get(id(p),offerId));
+    }
     @PostMapping @PreAuthorize("hasRole('REALTOR')")
     public ResponseEntity<CreditOfferResponse> issue(Principal p,@Valid @RequestBody CreateCreditOfferRequest request) {
         CreditOfferResponse response=service.issue(id(p),request);

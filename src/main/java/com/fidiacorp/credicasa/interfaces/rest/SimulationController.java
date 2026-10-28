@@ -45,9 +45,9 @@ public class SimulationController {
             @ApiResponse(responseCode = "401", description = "No autenticado"),
             @ApiResponse(responseCode = "403", description = "Acceso denegado (requiere ROLE_CLIENT o ROLE_REALTOR)")
     })
-    public ResponseEntity<SimulationResponseDto> calculateSimulation(@Valid @RequestBody SimulationRequestDto request) {
-        SimulationResponseDto response = simulationService.simulateAndSave(request);
-        return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    public ResponseEntity<SimulationResponseDto> calculateSimulation(java.security.Principal principal,@Valid @RequestBody SimulationRequestDto request) {
+        SimulationResponseDto response = simulationService.simulateAndSave(UUID.fromString(principal.getName()),request);
+        return ResponseEntity.status(HttpStatus.CREATED).cacheControl(org.springframework.http.CacheControl.noStore()).body(response);
     }
 
     @GetMapping("/{id}")
@@ -58,10 +58,10 @@ public class SimulationController {
             @ApiResponse(responseCode = "200", description = "Cotización encontrada"),
             @ApiResponse(responseCode = "404", description = "Cotización no encontrada")
     })
-    public ResponseEntity<SimulationResponseDto> getSimulationById(
+    public ResponseEntity<SimulationResponseDto> getSimulationById(java.security.Principal principal,
             @Parameter(description = "Identificador UUID de la cotización", required = true)
             @PathVariable UUID id) {
-        SimulationResponseDto response = simulationService.getById(id);
-        return ResponseEntity.ok(response);
+        SimulationResponseDto response = simulationService.getById(UUID.fromString(principal.getName()),id);
+        return ResponseEntity.ok().cacheControl(org.springframework.http.CacheControl.noStore()).body(response);
     }
 }

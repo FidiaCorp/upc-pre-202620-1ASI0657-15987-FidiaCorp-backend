@@ -18,6 +18,12 @@ public class CreditOfferRepositoryAdapter implements CreditOfferRepositoryPort {
         e.startDate=o.startDate();e.simulationId=o.simulationId();e.createdAt=o.createdAt();return map(repository.saveAndFlush(e));
     }
     public Optional<CreditOffer> findForRecipient(UUID id,UUID recipient) {return repository.findByIdAndRecipientId(id,recipient).map(this::map);}
+    public Optional<CreditOffer> lockForRecipient(UUID id,UUID recipient) {return repository.lockForRecipient(id,recipient).map(this::map);}
+    public void linkSimulation(UUID id,UUID recipient,UUID simulationId) {
+        CreditOfferJpaEntity entity=repository.lockForRecipient(id,recipient).orElseThrow(OfferResourceNotFoundException::new);
+        if(entity.simulationId!=null && !entity.simulationId.equals(simulationId))throw new IllegalStateException("La oferta ya tiene un cronograma.");
+        entity.simulationId=simulationId;repository.saveAndFlush(entity);
+    }
     public CreditOfferPage findReceived(UUID recipient,int page,int size) {
         var found=repository.findByRecipientId(recipient,PageRequest.of(page,size,Sort.by(Sort.Order.desc("createdAt"),Sort.Order.desc("id"))));
         return new CreditOfferPage(found.getContent().stream().map(this::map).toList(),found.getTotalElements());

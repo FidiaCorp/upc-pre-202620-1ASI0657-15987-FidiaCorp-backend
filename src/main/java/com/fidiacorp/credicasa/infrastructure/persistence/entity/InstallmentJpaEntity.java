@@ -40,31 +40,31 @@ public class InstallmentJpaEntity {
     @Column(name = "due_date", nullable = false)
     private LocalDate dueDate;
 
-    @Column(name = "initial_balance", precision = 18, scale = 2, nullable = false)
+    @Column(name = "initial_balance", precision = 38, scale = 2, nullable = false)
     private BigDecimal initialBalance;
 
-    @Column(name = "interest", precision = 18, scale = 2, nullable = false)
+    @Column(name = "interest", precision = 38, scale = 2, nullable = false)
     private BigDecimal interest;
 
-    @Column(name = "principal_amortization", precision = 18, scale = 2, nullable = false)
+    @Column(name = "principal_amortization", precision = 38, scale = 2, nullable = false)
     private BigDecimal principalAmortization;
 
-    @Column(name = "installment_amount", precision = 18, scale = 2, nullable = false)
+    @Column(name = "installment_amount", precision = 38, scale = 2, nullable = false)
     private BigDecimal installmentAmount;
 
-    @Column(name = "life_insurance", precision = 18, scale = 2, nullable = false)
+    @Column(name = "life_insurance", precision = 38, scale = 2, nullable = false)
     private BigDecimal lifeInsurance;
 
-    @Column(name = "property_insurance", precision = 18, scale = 2, nullable = false)
+    @Column(name = "property_insurance", precision = 38, scale = 2, nullable = false)
     private BigDecimal propertyInsurance;
 
-    @Column(name = "admin_fee", precision = 18, scale = 2, nullable = false)
+    @Column(name = "admin_fee", precision = 38, scale = 2, nullable = false)
     private BigDecimal adminFee;
 
-    @Column(name = "total_payment", precision = 18, scale = 2, nullable = false)
+    @Column(name = "total_payment", precision = 38, scale = 2, nullable = false)
     private BigDecimal totalPayment;
 
-    @Column(name = "final_balance", precision = 18, scale = 2, nullable = false)
+    @Column(name = "final_balance", precision = 38, scale = 2, nullable = false)
     private BigDecimal finalBalance;
 
     @Enumerated(EnumType.STRING)

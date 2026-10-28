@@ -1,0 +1,32 @@
+-- Explicit PostgreSQL upgrade; Hibernate update is currently used by the application.
+-- Do not infer owners, snapshot IDs or historical COK for legacy quotations.
+ALTER TABLE quotations ADD COLUMN IF NOT EXISTS owner_id UUID;
+ALTER TABLE quotations ADD COLUMN IF NOT EXISTS property_id UUID;
+ALTER TABLE quotations ADD COLUMN IF NOT EXISTS client_id UUID;
+ALTER TABLE quotations ADD COLUMN IF NOT EXISTS discount_rate_used NUMERIC(38,24);
+ALTER TABLE quotations ALTER COLUMN client_name TYPE VARCHAR(201);
+ALTER TABLE quotations ALTER COLUMN client_email TYPE VARCHAR(254);
+ALTER TABLE quotations ALTER COLUMN loan_amount TYPE NUMERIC(38,2);
+ALTER TABLE quotations ALTER COLUMN balloon_amount TYPE NUMERIC(38,2);
+ALTER TABLE quotations ALTER COLUMN property_value TYPE NUMERIC(38,2);
+ALTER TABLE quotations ALTER COLUMN monthly_admin_fee TYPE NUMERIC(38,2);
+ALTER TABLE quotations ALTER COLUMN van TYPE NUMERIC(38,2);
+ALTER TABLE quotations ALTER COLUMN total_interest TYPE NUMERIC(38,2);
+ALTER TABLE quotations ALTER COLUMN total_cost TYPE NUMERIC(38,2);
+ALTER TABLE quotations ALTER COLUMN annual_interest_rate TYPE NUMERIC(38,24);
+ALTER TABLE quotations ALTER COLUMN life_insurance_rate TYPE NUMERIC(38,24);
+ALTER TABLE quotations ALTER COLUMN property_insurance_rate TYPE NUMERIC(38,24);
+ALTER TABLE quotations ALTER COLUMN tea TYPE NUMERIC(38,24);
+ALTER TABLE quotations ALTER COLUMN tem TYPE NUMERIC(38,24);
+ALTER TABLE quotations ALTER COLUMN monthly_tir TYPE NUMERIC(60,24);
+ALTER TABLE quotations ALTER COLUMN tcea TYPE NUMERIC(280,24);
+ALTER TABLE installments ALTER COLUMN initial_balance TYPE NUMERIC(38,2);
+ALTER TABLE installments ALTER COLUMN interest TYPE NUMERIC(38,2);
+ALTER TABLE installments ALTER COLUMN principal_amortization TYPE NUMERIC(38,2);
+ALTER TABLE installments ALTER COLUMN installment_amount TYPE NUMERIC(38,2);
+ALTER TABLE installments ALTER COLUMN life_insurance TYPE NUMERIC(38,2);
+ALTER TABLE installments ALTER COLUMN property_insurance TYPE NUMERIC(38,2);
+ALTER TABLE installments ALTER COLUMN admin_fee TYPE NUMERIC(38,2);
+ALTER TABLE installments ALTER COLUMN total_payment TYPE NUMERIC(38,2);
+ALTER TABLE installments ALTER COLUMN final_balance TYPE NUMERIC(38,2);
+CREATE INDEX IF NOT EXISTS idx_quotations_owner ON quotations(owner_id);

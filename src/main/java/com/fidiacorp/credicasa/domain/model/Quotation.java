@@ -11,6 +11,7 @@ import java.util.UUID;
 public class Quotation {
 
     private final UUID id;
+    private UUID ownerId;
     private final BigDecimal loanAmount;
     private final Currency currency;
     private final int termMonths;
@@ -66,6 +67,17 @@ public class Quotation {
         this.status = status != null ? status : QuotationStatus.ISSUED;
         this.createdAt = createdAt != null ? createdAt : LocalDateTime.now();
     }
+
+    public Quotation(UUID id,BigDecimal loanAmount,Currency currency,int termMonths,BigDecimal annualInterestRate,
+        GracePeriod gracePeriod,BalloonPayment balloonPayment,BigDecimal lifeInsuranceRate,BigDecimal propertyInsuranceRate,
+        BigDecimal propertyValue,BigDecimal monthlyAdminFee,LocalDate startDate,ClientProfile clientProfile,
+        PropertySnapshot propertySnapshot,List<Installment> schedule,FinancialMetrics metrics,QuotationStatus status,
+        LocalDateTime createdAt,UUID ownerId) {
+        this(id,loanAmount,currency,termMonths,annualInterestRate,gracePeriod,balloonPayment,lifeInsuranceRate,
+            propertyInsuranceRate,propertyValue,monthlyAdminFee,startDate,clientProfile,propertySnapshot,schedule,metrics,status,createdAt);
+        this.ownerId=ownerId;
+    }
+    public UUID getOwnerId() {return ownerId;}
 
     public UUID getId() {
         return id;

@@ -1,288 +1,60 @@
 package com.fidiacorp.credicasa.domain.service;
-
-import com.fidiacorp.credicasa.domain.model.BalloonPayment;
-import com.fidiacorp.credicasa.domain.model.Currency;
-import com.fidiacorp.credicasa.domain.model.FinancialMetrics;
-import com.fidiacorp.credicasa.domain.model.GracePeriod;
-import com.fidiacorp.credicasa.domain.model.GracePeriodType;
-import com.fidiacorp.credicasa.domain.model.Installment;
-import com.fidiacorp.credicasa.domain.model.Quotation;
-import com.fidiacorp.credicasa.domain.model.QuotationStatus;
+import com.fidiacorp.credicasa.domain.model.*;
 import com.fidiacorp.credicasa.domain.ports.in.CalculateScheduleCommand;
-
-import java.math.BigDecimal;
-import java.math.MathContext;
-import java.math.RoundingMode;
-import java.time.LocalDate;
-import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.UUID;
-
-/**
- * Driver 2: Rendimiento y Precisión (ASR-PERF)
- * Motor Financiero Determinado bajo el Método Francés Ordinario Vencido (Convención 30/360).
- * Garantiza precisión con BigDecimal (escala 6 para tasas, HALF_EVEN a 2 decimales para importes)
- * y liquidación del saldo insoluto final a 0.00 exacto (AC-02).
- */
+import java.math.*;
+import java.time.*;
+import java.util.*;
+/** French amortization with cent rounding and exact final liquidation. */
 public class FrenchAmortizationEngine {
-
-    private static final RoundingMode CURRENCY_ROUNDING = RoundingMode.HALF_EVEN;
-    private static final int CURRENCY_SCALE = 2;
-    private static final int RATE_SCALE = 6;
-    private static final MathContext MC_PRECISE = MathContext.DECIMAL128;
-
-    private final FinancialMetricsCalculator metricsCalculator;
-
-    public FrenchAmortizationEngine() {
-        this.metricsCalculator = new FinancialMetricsCalculator();
+    private static final MathContext MC=MathContext.DECIMAL128;
+    private static final RoundingMode ROUND=RoundingMode.HALF_EVEN;
+    private final FinancialMetricsCalculator metrics;
+    public FrenchAmortizationEngine() {this(new FinancialMetricsCalculator());}
+    public FrenchAmortizationEngine(FinancialMetricsCalculator metrics) {this.metrics=metrics==null?new FinancialMetricsCalculator():metrics;}
+    private BigDecimal money(BigDecimal value) {return value.setScale(2,ROUND);}
+    private BigDecimal zeroIfNull(BigDecimal value) {return value==null?BigDecimal.ZERO:value;}
+    public Quotation generateQuotation(CalculateScheduleCommand c) {
+        SimulationRules.validate(c);
+        BigDecimal loan=money(c.loanAmount()),property=c.propertyValue()==null?loan:money(c.propertyValue());
+        BigDecimal tea=c.annualInterestRate(),tem=metrics.calculateTemFromTea(tea);
+        GracePeriod grace=c.gracePeriod()==null?GracePeriod.none():c.gracePeriod();
+        BalloonPayment balloon=c.balloonPayment()==null?BalloonPayment.none():c.balloonPayment();
+        LocalDate start=c.startDate()==null?LocalDate.now():c.startDate();
+        BigDecimal life=zeroIfNull(c.lifeInsuranceRate()),insurance=zeroIfNull(c.propertyInsuranceRate()),fee=zeroIfNull(c.monthlyAdminFee());
+        List<Installment> rows=calculateSchedule(loan,property,c.termMonths(),tem,start,grace,balloon,life,insurance,fee);
+        return new Quotation(UUID.randomUUID(),loan,c.currency(),c.termMonths(),tea.setScale(8,ROUND),grace,balloon,
+            life,insurance,property,fee,start,c.clientProfile(),c.propertySnapshot(),rows,
+            metrics.calculateMetrics(loan,tea,tem,rows,c.discountRateAnnual()),QuotationStatus.ISSUED,LocalDateTime.now(),c.ownerId());
     }
-
-    public FrenchAmortizationEngine(FinancialMetricsCalculator metricsCalculator) {
-        this.metricsCalculator = metricsCalculator != null ? metricsCalculator : new FinancialMetricsCalculator();
+    public List<Installment> calculateSchedule(BigDecimal principal,BigDecimal propertyValue,int termMonths,BigDecimal tem,
+        LocalDate startDate,GracePeriod grace,BalloonPayment balloon,BigDecimal lifeRate,BigDecimal propertyRate,BigDecimal monthlyFee) {
+        List<Installment> rows=new ArrayList<>(termMonths);BigDecimal balance=money(principal);
+        int graceMonths=grace.getMonths();
+        for(int k=1;k<=graceMonths;k++) {
+            BigDecimal initial=balance,interest=money(initial.multiply(tem,MC));
+            BigDecimal pure=grace.getType()==GracePeriodType.TOTAL?money(BigDecimal.ZERO):interest;
+            if(grace.getType()==GracePeriodType.TOTAL)balance=balance.add(interest);
+            BigDecimal life=money(initial.multiply(lifeRate,MC)),insurance=money(propertyValue.multiply(propertyRate,MC)),fee=money(monthlyFee);
+            rows.add(new Installment(k,startDate.plusMonths(k),initial,interest,money(BigDecimal.ZERO),pure,life,insurance,fee,
+                pure.add(life).add(insurance).add(fee),balance,grace.getType()));
+        }
+        int regularMonths=termMonths-graceMonths;
+        BigDecimal regular=regularInstallment(balance,tem,regularMonths,balloon);
+        for(int m=1;m<=regularMonths;m++) {
+            int k=graceMonths+m;BigDecimal initial=balance,interest=money(initial.multiply(tem,MC));
+            BigDecimal amortization=m==regularMonths?initial:regular.subtract(interest).max(BigDecimal.ZERO).min(initial);
+            BigDecimal pure=amortization.add(interest);balance=money(initial.subtract(amortization));
+            BigDecimal life=money(initial.multiply(lifeRate,MC)),insurance=money(propertyValue.multiply(propertyRate,MC)),fee=money(monthlyFee);
+            rows.add(new Installment(k,startDate.plusMonths(k),initial,interest,amortization,pure,life,insurance,fee,
+                pure.add(life).add(insurance).add(fee),balance,GracePeriodType.NONE));
+        }
+        return rows;
     }
-
-    /**
-     * Generates the complete quotation and amortization schedule according to the French method.
-     */
-    public Quotation generateQuotation(CalculateScheduleCommand command) {
-        validateCommand(command);
-
-        BigDecimal loanAmount = command.loanAmount().setScale(CURRENCY_SCALE, CURRENCY_ROUNDING);
-        BigDecimal propertyValue = command.propertyValue() != null ? command.propertyValue() : loanAmount;
-        int termMonths = command.termMonths();
-        BigDecimal tea = command.annualInterestRate();
-        BigDecimal tem = metricsCalculator.calculateTemFromTea(tea);
-        LocalDate startDate = command.startDate() != null ? command.startDate() : LocalDate.now();
-
-        GracePeriod gracePeriod = command.gracePeriod() != null ? command.gracePeriod() : GracePeriod.none();
-        BalloonPayment balloonPayment = command.balloonPayment() != null ? command.balloonPayment() : BalloonPayment.none();
-        BigDecimal lifeInsuranceRate = command.lifeInsuranceRate() != null ? command.lifeInsuranceRate() : BigDecimal.ZERO;
-        BigDecimal propertyInsuranceRate = command.propertyInsuranceRate() != null ? command.propertyInsuranceRate() : BigDecimal.ZERO;
-        BigDecimal monthlyAdminFee = command.monthlyAdminFee() != null ? command.monthlyAdminFee() : BigDecimal.ZERO;
-
-        List<Installment> schedule = calculateSchedule(
-                loanAmount,
-                propertyValue,
-                termMonths,
-                tem,
-                startDate,
-                gracePeriod,
-                balloonPayment,
-                lifeInsuranceRate,
-                propertyInsuranceRate,
-                monthlyAdminFee
-        );
-
-        FinancialMetrics metrics = metricsCalculator.calculateMetrics(
-                loanAmount,
-                tea,
-                tem,
-                schedule,
-                command.discountRateAnnual()
-        );
-
-        return new Quotation(
-                UUID.randomUUID(),
-                loanAmount,
-                command.currency() != null ? command.currency() : Currency.PEN,
-                termMonths,
-                tea.setScale(RATE_SCALE, CURRENCY_ROUNDING),
-                gracePeriod,
-                balloonPayment,
-                lifeInsuranceRate,
-                propertyInsuranceRate,
-                propertyValue,
-                monthlyAdminFee,
-                startDate,
-                command.clientProfile(),
-                command.propertySnapshot(),
-                schedule,
-                metrics,
-                QuotationStatus.ISSUED,
-                LocalDateTime.now()
-        );
-    }
-
-    /**
-     * Calculates the step-by-step amortization schedule.
-     */
-    public List<Installment> calculateSchedule(BigDecimal principal,
-                                               BigDecimal propertyValue,
-                                               int termMonths,
-                                               BigDecimal tem,
-                                               LocalDate startDate,
-                                               GracePeriod gracePeriod,
-                                               BalloonPayment balloonPayment,
-                                               BigDecimal lifeInsuranceRate,
-                                               BigDecimal propertyInsuranceRate,
-                                               BigDecimal monthlyAdminFee) {
-        List<Installment> schedule = new ArrayList<>(termMonths);
-        BigDecimal currentBalance = principal;
-        double temDouble = tem.doubleValue();
-        int graceMonths = gracePeriod.getMonths();
-        GracePeriodType graceType = gracePeriod.getType();
-
-        // 1. If Grace Period is configured, simulate grace months first
-        for (int k = 1; k <= graceMonths && k <= termMonths; k++) {
-            LocalDate dueDate = startDate.plusMonths(k);
-            BigDecimal initialBalance = currentBalance;
-            BigDecimal interest = initialBalance.multiply(BigDecimal.valueOf(temDouble), MC_PRECISE)
-                    .setScale(CURRENCY_SCALE, CURRENCY_ROUNDING);
-
-            BigDecimal lifeInsurance = initialBalance.multiply(lifeInsuranceRate, MC_PRECISE)
-                    .setScale(CURRENCY_SCALE, CURRENCY_ROUNDING);
-            BigDecimal propertyInsurance = propertyValue.multiply(propertyInsuranceRate, MC_PRECISE)
-                    .setScale(CURRENCY_SCALE, CURRENCY_ROUNDING);
-            BigDecimal adminFee = monthlyAdminFee.setScale(CURRENCY_SCALE, CURRENCY_ROUNDING);
-
-            BigDecimal amortization;
-            BigDecimal installmentAmount;
-            BigDecimal finalBalance;
-
-            if (graceType == GracePeriodType.TOTAL) {
-                // Total Grace: No principal or interest payment. Interest is capitalized to principal.
-                amortization = BigDecimal.ZERO.setScale(CURRENCY_SCALE, CURRENCY_ROUNDING);
-                installmentAmount = BigDecimal.ZERO.setScale(CURRENCY_SCALE, CURRENCY_ROUNDING);
-                finalBalance = initialBalance.add(interest);
-                currentBalance = finalBalance;
-            } else {
-                // Partial Grace: Interest is paid, amortization is zero. Balance remains constant.
-                amortization = BigDecimal.ZERO.setScale(CURRENCY_SCALE, CURRENCY_ROUNDING);
-                installmentAmount = interest;
-                finalBalance = initialBalance;
-                currentBalance = finalBalance;
-            }
-
-            BigDecimal totalPayment = installmentAmount.add(lifeInsurance).add(propertyInsurance).add(adminFee);
-
-            schedule.add(new Installment(
-                    k,
-                    dueDate,
-                    initialBalance,
-                    interest,
-                    amortization,
-                    installmentAmount,
-                    lifeInsurance,
-                    propertyInsurance,
-                    adminFee,
-                    totalPayment,
-                    finalBalance,
-                    graceType
-            ));
-        }
-
-        // 2. Regular amortization phase for remaining months
-        int regularMonths = termMonths - graceMonths;
-        if (regularMonths > 0) {
-            BigDecimal regularInstallment = calculateFrenchRegularInstallment(
-                    currentBalance,
-                    temDouble,
-                    regularMonths,
-                    balloonPayment
-            );
-
-            for (int m = 1; m <= regularMonths; m++) {
-                int installmentNumber = graceMonths + m;
-                LocalDate dueDate = startDate.plusMonths(installmentNumber);
-                BigDecimal initialBalance = currentBalance;
-
-                BigDecimal interest = initialBalance.multiply(BigDecimal.valueOf(temDouble), MC_PRECISE)
-                        .setScale(CURRENCY_SCALE, CURRENCY_ROUNDING);
-
-                BigDecimal lifeInsurance = initialBalance.multiply(lifeInsuranceRate, MC_PRECISE)
-                        .setScale(CURRENCY_SCALE, CURRENCY_ROUNDING);
-                BigDecimal propertyInsurance = propertyValue.multiply(propertyInsuranceRate, MC_PRECISE)
-                        .setScale(CURRENCY_SCALE, CURRENCY_ROUNDING);
-                BigDecimal adminFee = monthlyAdminFee.setScale(CURRENCY_SCALE, CURRENCY_ROUNDING);
-
-                BigDecimal amortization;
-                BigDecimal installmentAmount;
-                BigDecimal finalBalance;
-
-                if (m == regularMonths) {
-                    // AC-02: Liquidación de última cuota garantizando saldo insoluto a 0.00 exacto
-                    amortization = initialBalance;
-                    installmentAmount = amortization.add(interest);
-                    finalBalance = BigDecimal.ZERO.setScale(CURRENCY_SCALE, CURRENCY_ROUNDING);
-                    currentBalance = finalBalance;
-                } else {
-                    amortization = regularInstallment.subtract(interest);
-                    // Defensive check: if amortization exceeds balance
-                    if (amortization.compareTo(initialBalance) > 0) {
-                        amortization = initialBalance;
-                    }
-                    installmentAmount = regularInstallment;
-                    finalBalance = initialBalance.subtract(amortization).setScale(CURRENCY_SCALE, CURRENCY_ROUNDING);
-                    currentBalance = finalBalance;
-                }
-
-                BigDecimal totalPayment = installmentAmount.add(lifeInsurance).add(propertyInsurance).add(adminFee);
-
-                schedule.add(new Installment(
-                        installmentNumber,
-                        dueDate,
-                        initialBalance,
-                        interest,
-                        amortization,
-                        installmentAmount,
-                        lifeInsurance,
-                        propertyInsurance,
-                        adminFee,
-                        totalPayment,
-                        finalBalance,
-                        GracePeriodType.NONE
-                ));
-            }
-        }
-
-        return schedule;
-    }
-
-    /**
-     * Calculates the constant French installment R.
-     * Incorporates balloon payment if configured:
-     * R = [P - B * (1 + i)^(-m)] / [ (1 - (1 + i)^(-m)) / i ]
-     */
-    private BigDecimal calculateFrenchRegularInstallment(BigDecimal principal,
-                                                         double tem,
-                                                         int months,
-                                                         BalloonPayment balloon) {
-        if (months <= 0) {
-            return BigDecimal.ZERO;
-        }
-
-        double p = principal.doubleValue();
-        double factor = Math.pow(1.0 + tem, -months);
-        double annuityPresentValueFactor = (1.0 - factor) / tem;
-
-        double r;
-        if (balloon != null && balloon.isConfigured()) {
-            double b = balloon.getAmount().doubleValue();
-            double balloonPv = b * factor;
-            r = (p - balloonPv) / annuityPresentValueFactor;
-        } else {
-            r = p / annuityPresentValueFactor;
-        }
-
-        return BigDecimal.valueOf(r).setScale(CURRENCY_SCALE, CURRENCY_ROUNDING);
-    }
-
-    private void validateCommand(CalculateScheduleCommand command) {
-        if (command == null) {
-            throw new IllegalArgumentException("El comando de simulación no puede ser nulo.");
-        }
-        if (command.loanAmount() == null || command.loanAmount().compareTo(BigDecimal.ZERO) <= 0) {
-            throw new IllegalArgumentException("El monto del préstamo debe ser mayor a cero.");
-        }
-        if (command.termMonths() <= 0 || command.termMonths() > 360) {
-            throw new IllegalArgumentException("El plazo en meses debe estar entre 1 y 360.");
-        }
-        if (command.annualInterestRate() == null || command.annualInterestRate().compareTo(BigDecimal.ZERO) <= 0) {
-            throw new IllegalArgumentException("La tasa de interés anual (TEA) debe ser mayor a cero.");
-        }
-        if (command.gracePeriod() != null && command.gracePeriod().getMonths() >= command.termMonths()) {
-            throw new IllegalArgumentException("El período de gracia no puede ser mayor o igual al plazo total.");
-        }
+    private BigDecimal regularInstallment(BigDecimal principal,BigDecimal rate,int months,BalloonPayment balloon) {
+        BigDecimal future=BigDecimal.ONE.add(rate,MC).pow(months,MC);
+        BigDecimal presentBalloon=balloon.isConfigured()?balloon.getAmount().divide(future,MC):BigDecimal.ZERO;
+        if(rate.signum()==0)return money(principal.subtract(presentBalloon).divide(BigDecimal.valueOf(months),MC));
+        BigDecimal annuity=BigDecimal.ONE.subtract(BigDecimal.ONE.divide(future,MC),MC).divide(rate,MC);
+        return money(principal.subtract(presentBalloon).divide(annuity,MC));
     }
 }

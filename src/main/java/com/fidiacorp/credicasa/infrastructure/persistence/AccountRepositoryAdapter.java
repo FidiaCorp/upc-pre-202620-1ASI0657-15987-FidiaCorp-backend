@@ -22,6 +22,7 @@ public class AccountRepositoryAdapter implements AccountRepositoryPort {
         catch (DataIntegrityViolationException ex) { throw new EmailAlreadyRegisteredException(); }
     }
     private Account map(AccountJpaEntity e) {
+        e=org.hibernate.Hibernate.unproxy(e,AccountJpaEntity.class);
         return new Account(e.id, e.firstName, e.lastName, e.email, e.passwordHash, Set.of(e.roles.split(",")));
     }
 }
