@@ -762,3 +762,51 @@ El proyecto incluye dos suites de pruebas automatizadas que certifican los drive
 - **Producto:** CrediCasa Hipotecario
 - **Email:** architecture@fidiacorp.pe
 - **Licencia:** Apache License 2.0
+
+### Aceptación ejecutable y cobertura del Sprint 2
+
+`mvn verify` ejecuta las pruebas JUnit existentes y siete escenarios Gherkin en
+`src/test/resources/features/sprint2.feature`, mediante `Sprint2AcceptanceTest`
+y Cucumber 7.18.1 sobre Spring/MockMvc y H2. Las etiquetas mantienen las historias
+US02, US03, US04, US08, US10, US11 y US14; US07 aparece como dependencia del
+registro de inmuebles. No se accede a PostgreSQL ni a servicios bancarios reales.
+
+Los escenarios verifican recorridos completos: perfil persistente con validación,
+alta TOTP sin emisión prematura de JWT, logout de una sesión, eliminación exclusiva
+del propietario, oferta DEMO/notificación privada y lectura idempotente,
+cronograma persistente de oferta y filtros AND normalizados. Complementan las
+pruebas detalladas de permisos, concurrencia y referencias financieras.
+
+Resultados generados, ignorados por Git:
+
+- Surefire: `target/surefire-reports/`.
+- Cucumber: `target/cucumber/index.html`, `cucumber.json` y `results.xml`.
+- JaCoCo 0.8.12: `target/site/jacoco/index.html` y `jacoco.xml`, generados en
+  `verify`. La cobertura mide el código ejercitado y no reemplaza la aceptación;
+  no se impone un porcentaje arbitrario ni se afirma cobertura completa.
+
+### Fixture local para pruebas de navegador
+
+`BrowserFixtureServer` existe **solo en `src/test/java`**. Arranca una instancia
+HTTP real ligada a `127.0.0.1`, con puerto aleatorio, H2 en memoria y claves JWT/AES
+aleatorias. Sus argumentos internos de Spring fuerzan URL/driver/dialecto H2,
+credenciales y `create-drop`, incluso si el entorno configura PostgreSQL. No tiene
+endpoints especiales de aprovisionamiento ni de apagado. El jar de producción no
+incluye esta clase, el runner ni las dependencias de aceptación.
+
+```bash
+mvn test-compile dependency:build-classpath -Dmdep.outputFile=target/browser-classpath.txt
+java -cp "target/test-classes:target/classes:$(cat target/browser-classpath.txt)" \
+  com.fidiacorp.credicasa.testing.BrowserFixtureServer /ruta/privada/fixture.json
+```
+
+El archivo de destino debe ser nuevo. Tras crear datos, se publica atómicamente
+con permisos `0600`: contiene `apiBaseUrl`, `client`, `otherClient` y `realtor`
+(cada uno con `id`, `email`, `password`), `propertyId`, `offerId` y `pid`. No guarda
+tokens ni claves de cifrado. Los clientes y el asesor son exclusivamente de
+prueba; la propiedad y oferta DEMO iniciales pertenecen a esa instancia efímera.
+No publicar el manifiesto ni sus credenciales. Para finalizar, usar Ctrl-C o
+`kill -TERM <pid>`; Spring cierra H2 y el hook elimina el manifiesto. Una terminación
+forzada con SIGKILL requiere borrar manualmente el manifiesto residual. El reloj
+es real: después de confirmar un TOTP, esperar al siguiente intervalo de 30
+segundos antes de reutilizar otro código en login o desactivación.
