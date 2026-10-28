@@ -29,6 +29,10 @@ public class CreditOfferService {
         if(!property.ownerId().equals(issuerId))throw new AccessDeniedException("Solo puede emitir ofertas para sus inmuebles.");
         if(request.currency()!=property.currency())throw new IllegalArgumentException("La moneda debe coincidir con la del inmueble.");
         if(request.loanAmount().compareTo(property.price())>0)throw new IllegalArgumentException("El préstamo no puede superar el precio del inmueble.");
+        com.fidiacorp.credicasa.domain.service.SimulationRules.validate(new com.fidiacorp.credicasa.domain.ports.in.CalculateScheduleCommand(
+            request.loanAmount(),request.currency(),request.termMonths(),request.annualInterestRate(),GracePeriod.none(),BalloonPayment.none(),
+            java.math.BigDecimal.ZERO,java.math.BigDecimal.ZERO,property.price(),java.math.BigDecimal.ZERO,request.startDate(),null,null,
+            request.annualInterestRate()));
         OfferPropertySnapshot snapshot=new OfferPropertySnapshot(property.id(),property.title(),property.address(),property.price(),property.currency());
         CreditOffer saved=offers.save(new CreditOffer(UUID.randomUUID(),recipient.id(),issuerId,request.bankCode(),OfferOrigin.DEMO,snapshot,
             request.loanAmount(),request.currency(),request.annualInterestRate(),request.termMonths(),request.startDate(),null,clock.instant()));

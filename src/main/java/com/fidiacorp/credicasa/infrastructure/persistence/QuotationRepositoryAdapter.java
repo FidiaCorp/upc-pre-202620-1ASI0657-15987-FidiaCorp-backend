@@ -52,9 +52,16 @@ public class QuotationRepositoryAdapter implements QuotationRepositoryPort {
                 .collect(Collectors.toList());
     }
 
+    @Override
+    @Transactional(readOnly=true)
+    public Optional<Quotation> findByIdAndOwnerId(UUID id,UUID ownerId) {
+        return jpaRepository.findOwnedWithInstallments(id,ownerId).map(this::toDomain);
+    }
+
     private QuotationJpaEntity toEntity(Quotation domain) {
         QuotationJpaEntity entity = new QuotationJpaEntity();
         entity.setId(domain.getId());
+        entity.setOwnerId(domain.getOwnerId());
         entity.setLoanAmount(domain.getLoanAmount());
         entity.setCurrency(domain.getCurrency());
         entity.setTermMonths(domain.getTermMonths());
@@ -75,6 +82,7 @@ public class QuotationRepositoryAdapter implements QuotationRepositoryPort {
 
         FinancialMetrics metrics = domain.getMetrics();
         if (metrics != null) {
+            entity.setDiscountRateUsed(metrics.getDiscountRateUsed());
             entity.setTea(metrics.getTea());
             entity.setTem(metrics.getTem());
             entity.setMonthlyTir(metrics.getMonthlyTir());
@@ -85,17 +93,19 @@ public class QuotationRepositoryAdapter implements QuotationRepositoryPort {
         }
 
         if (domain.getClientProfile() != null) {
+            entity.setClientId(domain.getClientProfile().getId());
             entity.setClientDoc(domain.getClientProfile().getDocumentNumber());
             entity.setClientName(domain.getClientProfile().getFullName());
             entity.setClientEmail(domain.getClientProfile().getEmail());
         }
 
         if (domain.getPropertySnapshot() != null) {
+            entity.setPropertyId(domain.getPropertySnapshot().getPropertyId());
             entity.setPropertyAddress(domain.getPropertySnapshot().getAddress());
         }
 
         entity.setStatus(domain.getStatus());
-        entity.setCreatedAt(domain.getCreatedAt());
+        entity.setCreatedAt(domain.getCreatedAt().truncatedTo(java.time.temporal.ChronoUnit.MICROS));
 
         if (domain.getSchedule() != null) {
             for (Installment inst : domain.getSchedule()) {
@@ -126,9 +136,9 @@ public class QuotationRepositoryAdapter implements QuotationRepositoryPort {
                 : BalloonPayment.none();
 
         ClientProfile clientProfile = null;
-        if (entity.getClientDoc() != null) {
+        if (entity.getClientId() != null || entity.getClientDoc() != null) {
             clientProfile = new ClientProfile(
-                    UUID.randomUUID(),
+                    entity.getClientId(),
                     entity.getClientDoc(),
                     entity.getClientName(),
                     entity.getClientEmail(),
@@ -138,7 +148,7 @@ public class QuotationRepositoryAdapter implements QuotationRepositoryPort {
         }
 
         PropertySnapshot propertySnapshot = new PropertySnapshot(
-                UUID.randomUUID(),
+                entity.getPropertyId(),
                 entity.getPropertyValue(),
                 entity.getCurrency(),
                 entity.getPropertyAddress()
@@ -185,7 +195,7 @@ public class QuotationRepositoryAdapter implements QuotationRepositoryPort {
                 sumProp,
                 sumAdmin,
                 entity.getTotalCost(),
-                entity.getTea()
+                entity.getDiscountRateUsed()
         );
 
         return new Quotation(
@@ -206,7 +216,8 @@ public class QuotationRepositoryAdapter implements QuotationRepositoryPort {
                 schedule,
                 metrics,
                 entity.getStatus(),
-                entity.getCreatedAt()
+                entity.getCreatedAt(),
+                entity.getOwnerId()
         );
     }
 }

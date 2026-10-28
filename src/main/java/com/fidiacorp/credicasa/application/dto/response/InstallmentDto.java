@@ -15,31 +15,31 @@ public record InstallmentDto(
         LocalDate dueDate,
 
         @Schema(description = "Saldo inicial antes de amortizar en este período", example = "200000.00")
-        BigDecimal initialBalance,
+        @com.fasterxml.jackson.databind.annotation.JsonSerialize(using=PlainDecimalSerializer.class) BigDecimal initialBalance,
 
         @Schema(description = "Interés generado en el período (Saldo * TEM)", example = "1363.68")
-        BigDecimal interest,
+        @com.fasterxml.jackson.databind.annotation.JsonSerialize(using=PlainDecimalSerializer.class) BigDecimal interest,
 
         @Schema(description = "Amortización de capital del período", example = "348.32")
-        BigDecimal principalAmortization,
+        @com.fasterxml.jackson.databind.annotation.JsonSerialize(using=PlainDecimalSerializer.class) BigDecimal principalAmortization,
 
         @Schema(description = "Cuota pura (Amortización + Interés)", example = "1712.00")
-        BigDecimal installmentAmount,
+        @com.fasterxml.jackson.databind.annotation.JsonSerialize(using=PlainDecimalSerializer.class) BigDecimal installmentAmount,
 
         @Schema(description = "Seguro de desgravamen del período", example = "100.00")
-        BigDecimal lifeInsurance,
+        @com.fasterxml.jackson.databind.annotation.JsonSerialize(using=PlainDecimalSerializer.class) BigDecimal lifeInsurance,
 
         @Schema(description = "Seguro de inmueble multirriesgo del período", example = "62.50")
-        BigDecimal propertyInsurance,
+        @com.fasterxml.jackson.databind.annotation.JsonSerialize(using=PlainDecimalSerializer.class) BigDecimal propertyInsurance,
 
         @Schema(description = "Gastos administrativos y portes", example = "10.00")
-        BigDecimal adminFee,
+        @com.fasterxml.jackson.databind.annotation.JsonSerialize(using=PlainDecimalSerializer.class) BigDecimal adminFee,
 
         @Schema(description = "Cuota total a pagar por el cliente (Cuota pura + Seguros + Gastos)", example = "1884.50")
-        BigDecimal totalPayment,
+        @com.fasterxml.jackson.databind.annotation.JsonSerialize(using=PlainDecimalSerializer.class) BigDecimal totalPayment,
 
         @Schema(description = "Saldo final restante al término del período. La última cuota liquida a 0.00 exacto", example = "199651.68")
-        BigDecimal finalBalance,
+        @com.fasterxml.jackson.databind.annotation.JsonSerialize(using=PlainDecimalSerializer.class) BigDecimal finalBalance,
 
         @Schema(description = "Tipo de gracia activa en la cuota (NONE, PARTIAL, TOTAL)", example = "NONE")
         GracePeriodType graceType

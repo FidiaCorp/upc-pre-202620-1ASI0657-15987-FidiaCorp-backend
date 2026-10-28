@@ -140,6 +140,14 @@ public class RestExceptionHandler {
             ex.getMessage(),LocalDateTime.now(),null));
     }
 
+    @ExceptionHandler(com.fidiacorp.credicasa.domain.model.QuotationNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleQuotationNotFound(RuntimeException ex) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ErrorResponse(404,"Not Found",ex.getMessage(),LocalDateTime.now(),null));
+    }
+    @ExceptionHandler(java.time.DateTimeException.class)
+    public ResponseEntity<ErrorResponse> handleDateRange(Exception ex) {
+        return ResponseEntity.badRequest().body(new ErrorResponse(400,"Bad Request","La fecha queda fuera del rango permitido.",LocalDateTime.now(),null));
+    }
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> handleGeneralException(Exception ex) {
         ErrorResponse response = new ErrorResponse(

@@ -12,7 +12,7 @@ public class PropertySnapshot {
     private final String address;
 
     public PropertySnapshot(UUID propertyId, BigDecimal propertyValue, Currency currency, String address) {
-        this.propertyId = propertyId != null ? propertyId : UUID.randomUUID();
+        this.propertyId = propertyId;
         this.propertyValue = propertyValue != null ? propertyValue : BigDecimal.ZERO;
         this.currency = currency != null ? currency : Currency.PEN;
         this.address = address;

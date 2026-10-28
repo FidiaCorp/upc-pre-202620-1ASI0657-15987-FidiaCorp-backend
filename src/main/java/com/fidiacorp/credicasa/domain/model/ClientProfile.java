@@ -14,7 +14,7 @@ public class ClientProfile {
     private final Integer creditScore;
 
     public ClientProfile(UUID id, String documentNumber, String fullName, String email, BigDecimal monthlyIncome, Integer creditScore) {
-        this.id = id != null ? id : UUID.randomUUID();
+        this.id = id;
         this.documentNumber = documentNumber;
         this.fullName = fullName;
         this.email = email;

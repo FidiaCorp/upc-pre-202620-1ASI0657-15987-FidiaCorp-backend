@@ -67,18 +67,18 @@ El diseño e implementación de este microservicio responde directamente a los t
   - Conversión estricta de Tasa Efectiva Anual (TEA) a Tasa Efectiva Mensual (TEM):
     $$\text{TEM} = (1 + \text{TEA})^{30/360} - 1 = (1 + \text{TEA})^{1/12} - 1$$
 - **Aritmética de Alta Precisión con `BigDecimal`:**
-  - Tasas y factores calculados con escala extendida (`MathContext.DECIMAL128` y escala 6/8).
+  - Tasas y factores calculados con escala extendida (`MathContext.DECIMAL128`, tasas de entrada de hasta 8 decimales y TEM de 24).
   - Redondeo bancario monetario **`RoundingMode.HALF_EVEN`** a 2 decimales para importes de cuotas, intereses, seguros y amortizaciones.
 - **Liquidación Estricta del Saldo Final a 0.00 Exacto (Architectural Concern AC-02):**
   - En la cuota final $N$, la amortización liquida exactamente el saldo inicial restante:
     $$A_N = S_{N-1}, \quad R_N = A_N + I_N, \quad S_N = 0.00$$
-  - La suma de todas las amortizaciones coincide al centavo con el importe del préstamo otorgado.
+  - Sin gracia total, la suma de amortizaciones coincide con el préstamo. Con gracia total incluye el interés capitalizado.
 - **Soporte de Variantes del Producto Financiero:**
   - **Gracia Total (`TOTAL`):** Los intereses generados se capitalizan al saldo deudor ($S_k = S_{k-1} + I_k$), amortización 0.00. Al concluir la gracia, se recalcula la cuota fija sobre el saldo capitalizado y los meses restantes.
   - **Gracia Parcial (`PARTIAL`):** Se cancelan intereses generados mensualmente, la amortización es 0.00 y el saldo permanece constante. Al concluir, se amortiza en el plazo remanente.
   - **Cuota Balón (`BalloonPayment`):** Soporte de pagos extraordinarios al vencimiento con deducción en el valor actual de la anualidad regular.
 - **Métricas Financieras Completas:**
-  - **TIR Mensual:** Solver numérico robusto en `FinancialMetricsCalculator` que combina el método acelerado de **Newton-Raphson** con respaldo por **Bisección** (criterio AC-04) sobre los flujos de caja del deudor.
+  - **TIR Mensual:** Solver numérico robusto en `FinancialMetricsCalculator` mediante **bisección con acotación adaptativa** sobre flujos normalizados del deudor, sin inventar una tasa cuando no hay convergencia.
   - **TCEA Real Anualizada:**
     $$\text{TCEA} = (1 + \text{TIR}_{\text{mensual}})^{12} - 1$$
     Incorpora cuota de amortización, intereses, seguro de desgravamen, seguro multirriesgo del bien y cargos fijos.
@@ -422,8 +422,8 @@ La respuesta contiene
 `property` es la instantánea `{id,title,address,price,currency}`, copiada al emitir;
 permanece disponible aunque el inmueble se elimine del catálogo.
 Montos y tasa se devuelven como **cadenas decimales exactas**, incluido el monto
-máximo `"9999999999999999.99"`. `simulationId` es `null` en esta etapa; no se
-simula una asociación ni se modifica el motor de cálculo.
+máximo `"9999999999999999.99"`. `simulationId` comienza en `null` y se completa al generar el cronograma mediante
+`POST /api/v1/offers/{id}/schedule`, sin aceptar una asociación arbitraria del cliente.
 
 `GET /api/v1/offers?page=0&size=20` devuelve únicamente ofertas recibidas por el
 principal actual, con `{items,page,size,totalElements,totalPages}`.
@@ -477,6 +477,108 @@ manual; la configuración actual usa Hibernate `ddl-auto=update`.
 `CreditOfferIntegrationTest` cubre privacidad por destinatario, atomicidad ante
 fallo de inserción del aviso, roles y propietario, términos inválidos, precisión
 máxima, instantánea tras eliminar el inmueble, paginación y lectura concurrente.
+
+---
+
+### Simulaciones propias y cronograma de una oferta
+
+`POST /api/v1/simulations/calculate` devuelve 201 y asigna el propietario desde el
+UUID autenticado. `GET /api/v1/simulations/{quotationId}` solo devuelve 200 a ese
+propietario; un tercero o una simulación histórica sin propietario devuelve 404.
+No se deducen propietarios de registros antiguos por correo ni por información
+presentada por el cliente. `clientProfile` se conserva como entrada heredada,
+pero su identidad no se utiliza: UUID, nombre y correo proceden de la cuenta.
+
+Contrato de entrada, además de `loanAmount` y `currency` obligatorios:
+
+- `loanAmount` y `propertyValue` son positivos, hasta 16 enteros y 2 decimales.
+  El valor del inmueble se puede omitir y entonces coincide con el préstamo;
+  el préstamo no puede superarlo.
+- `annualInterestRate` es TEA decimal en `(0,1]`, hasta 8 decimales y mínimo
+  efectivo `0.00000001`. Un porcentaje como `8.5` se rechaza. La UI convierte
+  el porcentaje a decimal sin recurrir a aritmética de punto flotante.
+- `termMonths` admite 1–360 y `termYears` admite 1–30. Si se envían ambos deben
+  representar el mismo plazo. Omitir ambos conserva el valor predeterminado 240.
+- `gracePeriodType` es `NONE` (predeterminado), `PARTIAL` o `TOTAL`.
+  `NONE` exige 0 meses; las otras variantes requieren `gracePeriodMonths`
+  entre 1 y 36 y estrictamente menor al plazo total.
+- `balloonPaymentAmount` y `balloonPaymentMonth` deben ser coherentes: sin
+  balón se omiten o son 0; con importe positivo el mes debe ser el vencimiento
+  y el importe no puede superar el préstamo. Se rechazan balones intermedios,
+  que este motor no implementa.
+- `lifeInsuranceRate` y `propertyInsuranceRate` son tasas mensuales en `[0,1]`
+  con hasta 8 decimales, por defecto 0. `monthlyAdminFee` es un importe no
+  negativo con hasta 16 enteros y 2 decimales, por defecto 0. Se cobran seguros
+  y gastos también durante los meses de gracia.
+- `discountRateAnnual` (COK) acepta `[0,1]` con hasta 8 decimales.
+  Omitirlo utiliza la TEA; enviar 0 descuenta a tasa cero y se conserva como 0.
+- `startDate` es una fecha ISO `YYYY-MM-DD`, con año 1900–9990; también se exige
+  que `startDate.plusMonths(termMonths)` no supere 9999. Las fechas históricas
+  son válidas. Omitirla utiliza el día UTC actual. `propertyAddress` es opcional,
+  máximo 250 caracteres.
+
+Importes y tasas admiten cadenas decimales como `"200000.00"` y `"0.085"`.
+Los errores de formato, valores negativos no permitidos y combinaciones
+incompatibles devuelven 400 antes de guardar.
+
+La respuesta mantiene
+`{quotationId,currency,loanAmount,propertyValue,termMonths,estimatedMonthlyInstallment,metrics,status,schedule,createdAt}`.
+**Todos los importes y métricas decimales son cadenas sin notación científica**,
+incluidos ceros y VAN negativo. Las fechas de cuotas son ISO sin conversión de
+zona horaria. `estimatedMonthlyInstallment` corresponde al primer pago regular,
+no al mes de gracia. Cada cuota incluye número, fecha, saldo inicial, interés,
+amortización, cuota pura, seguros, gasto administrativo, pago total y saldo final.
+Las consultas privadas envían `Cache-Control: no-store`.
+
+Para una oferta recibida:
+
+- `POST /api/v1/offers/{id}/schedule`, sin cuerpo, devuelve 200 al generar y
+  también al repetir. Solo el destinatario puede solicitarlo. La generación
+  y asociación son una transacción con bloqueo de la oferta: solicitudes
+  concurrentes producen un único cronograma persistido.
+- `GET /api/v1/offers/{id}/schedule` recupera el mismo cronograma guardado.
+  Oferta ajena, cronograma todavía no generado o recurso inexistente devuelven 404.
+- Préstamo, TEA, moneda, plazo, fecha y propiedad se toman exclusivamente de la
+  instantánea de la oferta. Un cuerpo enviado a POST no modifica esos términos.
+  La propiedad puede haberse eliminado del catálogo: su instantánea se conserva.
+- Las ofertas DEMO actuales no incluyen productos de seguros o cargos bancarios:
+  se calculan con **gracia NONE, sin balón, seguros y gastos 0**, COK igual a TEA.
+  Es un cronograma demostrativo del contrato guardado; no se presenta como una
+  TCEA regulatoria ni como una aprobación bancaria real.
+
+Precisión y conservación: TEM se calcula con raíz duodécima y cuota con anualidad
+en `BigDecimal`/DECIMAL128; se redondea a centavos mediante HALF_EVEN por período.
+La cuota final liquida exactamente 0.00. Con gracia TOTAL la suma de amortizaciones
+es préstamo más intereses capitalizados; en los otros casos coincide con el
+préstamo. El VAN usa la perspectiva del deudor: `+loanAmount` inicial y pagos
+negativos; con COK 0 es `loanAmount - sum(totalPayment)`. No se corrige su signo.
+TIR y TCEA se obtienen numéricamente con acotación adaptativa y bisección.
+
+La persistencia conserva propietario, UUID del cliente e inmueble, fecha y COK
+reales; no genera identificadores nuevos al leer ni sustituye COK por TEA.
+`V7__owned_schedules_precision.sql` amplía dinero a `NUMERIC(38,2)`, TIR a
+`NUMERIC(60,24)` y TCEA a `NUMERIC(280,24)`. Esto cubre totales acumulados por
+encima del límite original y el caso admitido de préstamo de un centavo con
+seguros/gastos máximos, sin desbordamiento y conservando VAN negativo.
+Las columnas nuevas de registros heredados permanecen nulas; no se inventan
+identidad ni COK histórico. Actualmente Hibernate actualiza el esquema; el DDL
+expreso está disponible para instalaciones con migraciones administradas.
+
+La prueba `FinanceReferenceTest` compara todas las cuotas y métricas de nueve
+vectores independientes: `src/test/resources/finance_reference.py` utiliza
+Python Decimal con 300 dígitos, TEM por `exp(ln(1+TEA)/12)` y TIR mediante factor
+de descuento, sin importar código Java. El JSON de referencia está versionado y
+Maven no necesita Python. Para regenerarlo, opcionalmente:
+
+```bash
+python3 src/test/resources/finance_reference.py
+```
+
+Se incluyen estándar con/sin gastos, COK 0, gracia total/parcial, balón final,
+monto máximo con TEA mínima y un centavo con gastos extremos.
+`ScheduleIntegrationTest` verifica persistencia exacta, privacidad, identidades,
+fechas de fin de mes y límites del calendario, instantáneas e idempotencia
+concurrente; un fallo al asociar la oferta revierte también el cronograma.
 
 ---
 

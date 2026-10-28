@@ -18,16 +18,16 @@ public record SimulationResponseDto(
         Currency currency,
 
         @Schema(description = "Monto del crédito simulado", example = "200000.00")
-        BigDecimal loanAmount,
+        @com.fasterxml.jackson.databind.annotation.JsonSerialize(using=PlainDecimalSerializer.class) BigDecimal loanAmount,
 
         @Schema(description = "Valor del inmueble", example = "250000.00")
-        BigDecimal propertyValue,
+        @com.fasterxml.jackson.databind.annotation.JsonSerialize(using=PlainDecimalSerializer.class) BigDecimal propertyValue,
 
         @Schema(description = "Plazo total en meses", example = "240")
         int termMonths,
 
         @Schema(description = "Resumen de cuota mensual ordinaria estimada", example = "1884.50")
-        BigDecimal estimatedMonthlyInstallment,
+        @com.fasterxml.jackson.databind.annotation.JsonSerialize(using=PlainDecimalSerializer.class) BigDecimal estimatedMonthlyInstallment,
 
         @Schema(description = "Métricas financieras (TEA, TEM, TIR, TCEA, VAN, Totales)")
         FinancialMetricsDto metrics,

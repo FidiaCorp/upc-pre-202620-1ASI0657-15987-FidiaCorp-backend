@@ -1,6 +1,11 @@
 package com.fidiacorp.credicasa.application.usecase;
 
-import com.fidiacorp.credicasa.application.dto.request.ClientProfileDto;
+import com.fidiacorp.credicasa.domain.model.Account;
+import com.fidiacorp.credicasa.domain.model.GracePeriodType;
+import com.fidiacorp.credicasa.domain.model.QuotationNotFoundException;
+import com.fidiacorp.credicasa.domain.ports.out.AccountRepositoryPort;
+import java.time.Clock;
+import java.time.LocalDate;
 import com.fidiacorp.credicasa.application.dto.request.SimulationRequestDto;
 import com.fidiacorp.credicasa.application.dto.response.FinancialMetricsDto;
 import com.fidiacorp.credicasa.application.dto.response.InstallmentDto;
@@ -29,82 +34,52 @@ public class CalculateCreditSimulationService implements CalculateScheduleUseCas
 
     private final FrenchAmortizationEngine amortizationEngine;
     private final QuotationRepositoryPort quotationRepositoryPort;
+    private final AccountRepositoryPort accounts;
+    private final Clock clock;
 
     public CalculateCreditSimulationService(FrenchAmortizationEngine amortizationEngine,
-                                            QuotationRepositoryPort quotationRepositoryPort) {
+                                            QuotationRepositoryPort quotationRepositoryPort,AccountRepositoryPort accounts,Clock clock) {
         this.amortizationEngine = amortizationEngine;
         this.quotationRepositoryPort = quotationRepositoryPort;
+        this.accounts=accounts;this.clock=clock;
     }
 
     @Override
     @Transactional
     public Quotation calculateAndIssue(CalculateScheduleCommand command) {
+        if(command.ownerId()==null)throw new IllegalArgumentException("El propietario autenticado es obligatorio.");
         Quotation quotation = amortizationEngine.generateQuotation(command);
         return quotationRepositoryPort.save(quotation);
     }
 
     @Transactional
-    public SimulationResponseDto simulateAndSave(SimulationRequestDto request) {
-        CalculateScheduleCommand command = mapDtoToCommand(request);
+    public SimulationResponseDto simulateAndSave(UUID ownerId,SimulationRequestDto request) {
+        CalculateScheduleCommand command = mapDtoToCommand(ownerId,request);
         Quotation savedQuotation = calculateAndIssue(command);
         return mapToResponseDto(savedQuotation);
     }
 
     @Transactional(readOnly = true)
-    public SimulationResponseDto getById(UUID id) {
-        Quotation quotation = quotationRepositoryPort.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("Cotización no encontrada con ID: " + id));
+    public SimulationResponseDto getById(UUID ownerId,UUID id) {
+        Quotation quotation = quotationRepositoryPort.findByIdAndOwnerId(id,ownerId)
+                .orElseThrow(QuotationNotFoundException::new);
         return mapToResponseDto(quotation);
     }
 
-    private CalculateScheduleCommand mapDtoToCommand(SimulationRequestDto request) {
-        int termMonths = request.resolveTotalMonths();
-        BigDecimal tea = request.resolveTeaNormalized();
-
-        GracePeriod gracePeriod = request.gracePeriodType() != null && request.gracePeriodMonths() != null
-                ? GracePeriod.of(request.gracePeriodType(), request.gracePeriodMonths())
-                : GracePeriod.none();
-
-        BalloonPayment balloonPayment = request.balloonPaymentAmount() != null && request.balloonPaymentMonth() != null
-                ? BalloonPayment.of(request.balloonPaymentMonth(), request.balloonPaymentAmount())
-                : BalloonPayment.none();
-
-        ClientProfile clientProfile = null;
-        if (request.clientProfile() != null) {
-            ClientProfileDto cp = request.clientProfile();
-            clientProfile = new ClientProfile(
-                    UUID.randomUUID(),
-                    cp.documentNumber(),
-                    cp.fullName(),
-                    cp.email(),
-                    cp.monthlyIncome(),
-                    cp.creditScore()
-            );
-        }
-
-        PropertySnapshot propertySnapshot = new PropertySnapshot(
-                UUID.randomUUID(),
-                request.propertyValue() != null ? request.propertyValue() : request.loanAmount(),
-                request.currency(),
-                request.propertyAddress() != null ? request.propertyAddress() : "Inmueble de referencia"
-        );
-
-        return new CalculateScheduleCommand(
-                request.loanAmount(),
-                request.currency(),
-                termMonths,
-                tea,
-                gracePeriod,
-                balloonPayment,
-                request.lifeInsuranceRate(),
-                request.propertyInsuranceRate(),
-                request.propertyValue(),
-                request.monthlyAdminFee(),
-                request.startDate(),
-                clientProfile,
-                propertySnapshot,
-                request.discountRateAnnual()
-        );
+    private CalculateScheduleCommand mapDtoToCommand(UUID ownerId,SimulationRequestDto request) {
+        int months=request.resolveTotalMonths();
+        GracePeriod grace=GracePeriod.of(request.gracePeriodType()==null?GracePeriodType.NONE:request.gracePeriodType(),
+            request.gracePeriodMonths()==null?0:request.gracePeriodMonths());
+        BalloonPayment balloon=BalloonPayment.of(request.balloonPaymentMonth()==null?0:request.balloonPaymentMonth(),
+            request.balloonPaymentAmount()==null?BigDecimal.ZERO:request.balloonPaymentAmount());
+        Account account=accounts.findById(ownerId).orElseThrow(QuotationNotFoundException::new);
+        ClientProfile client=new ClientProfile(account.id(),null,account.firstName()+" "+account.lastName(),account.email(),BigDecimal.ZERO,null);
+        BigDecimal propertyValue=request.propertyValue()==null?request.loanAmount():request.propertyValue();
+        PropertySnapshot property=new PropertySnapshot(UUID.randomUUID(),propertyValue,request.currency(),
+            request.propertyAddress()==null?"Inmueble de referencia":request.propertyAddress());
+        return new CalculateScheduleCommand(request.loanAmount(),request.currency(),months,request.resolveTeaNormalized(),grace,balloon,
+            request.lifeInsuranceRate(),request.propertyInsuranceRate(),propertyValue,request.monthlyAdminFee(),
+            request.startDate()==null?LocalDate.now(clock):request.startDate(),client,property,request.discountRateAnnual(),ownerId);
     }
 
     public SimulationResponseDto mapToResponseDto(Quotation quotation) {
@@ -114,7 +89,7 @@ public class CalculateCreditSimulationService implements CalculateScheduleUseCas
 
         FinancialMetrics metrics = quotation.getMetrics();
         FinancialMetricsDto metricsDto = new FinancialMetricsDto(
-                metrics.getTea(),
+                metrics.getTea().setScale(8),
                 metrics.getTem(),
                 metrics.getMonthlyTir(),
                 metrics.getTcea(),
@@ -125,12 +100,11 @@ public class CalculateCreditSimulationService implements CalculateScheduleUseCas
                 metrics.getTotalPropertyInsurance(),
                 metrics.getTotalAdminFee(),
                 metrics.getTotalCost(),
-                metrics.getDiscountRateUsed()
+                metrics.getDiscountRateUsed()==null?null:metrics.getDiscountRateUsed().setScale(8)
         );
 
-        BigDecimal estimatedMonthly = quotation.getSchedule().isEmpty()
-                ? BigDecimal.ZERO
-                : quotation.getSchedule().get(0).getTotalPayment();
+        BigDecimal estimatedMonthly=quotation.getSchedule().stream().filter(i -> i.getGraceType()==GracePeriodType.NONE)
+            .findFirst().map(Installment::getTotalPayment).orElse(BigDecimal.ZERO);
 
         return new SimulationResponseDto(
                 quotation.getId(),
