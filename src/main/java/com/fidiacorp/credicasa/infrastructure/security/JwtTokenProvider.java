@@ -35,10 +35,17 @@ public class JwtTokenProvider {
     private final long jwtExpirationMs;
 
     public JwtTokenProvider(
-            @Value("${app.security.jwt.secret:CrediCasaFidiaCorpSuperSecureJwtSigningKey2026Secure256BitsMinimum}") String secret,
+            @Value("${app.security.jwt.secret}") String secret,
             @Value("${app.security.jwt.expiration-ms:86400000}") long jwtExpirationMs) {
         this.signingKey = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
         this.jwtExpirationMs = jwtExpirationMs;
+    }
+
+    @jakarta.annotation.PostConstruct
+    void validateConfiguration() {
+        if (jwtExpirationMs <= 0 || jwtExpirationMs > 31536000000L) {
+            throw new IllegalArgumentException("JWT expiration must be between 1 ms and 365 days");
+        }
     }
 
     public String generateToken(UserDetails userDetails) {
@@ -49,7 +56,7 @@ public class JwtTokenProvider {
         claims.put("roles", roles);
 
         Date now = new Date();
-        Date expiryDate = new Date(now.getTime() + jwtExpirationMs);
+        Date expiryDate = new Date(Math.addExact(now.getTime(), jwtExpirationMs));
 
         return Jwts.builder()
                 .claims(claims)

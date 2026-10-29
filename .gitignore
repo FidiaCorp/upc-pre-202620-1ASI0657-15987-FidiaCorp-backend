@@ -35,3 +35,8 @@ out/
 ### OS Files ###
 .DS_Store
 Thumbs.db
+
+# Local deployment secrets
+.env
+.env.*
+!.env.example

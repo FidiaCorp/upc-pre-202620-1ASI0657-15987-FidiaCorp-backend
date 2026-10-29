@@ -8,18 +8,24 @@ spring:
     name: credicasa-mortgage-service
   
   datasource:
-    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:credicasa_db}}
-    username: ${SPRING_DATASOURCE_USERNAME:postgres}
-    password: ${SPRING_DATASOURCE_PASSWORD:postgres}
+    url: ${SPRING_DATASOURCE_URL}
+    username: ${SPRING_DATASOURCE_USERNAME}
+    password: ${SPRING_DATASOURCE_PASSWORD}
     driver-class-name: org.postgresql.Driver
     hikari:
       connection-timeout: 30000
       maximum-pool-size: 10
       minimum-idle: 2
 
+  flyway:
+    enabled: true
+    baseline-on-migrate: false
+    clean-disabled: true
+    validate-on-migrate: true
+
   jpa:
     hibernate:
-      ddl-auto: update
+      ddl-auto: validate
     show-sql: false
     open-in-view: false
     properties:
@@ -34,10 +40,11 @@ spring:
 
 app:
   security:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173,http://127.0.0.1:5173}
     two-factor:
       encryption-key: ${TWO_FACTOR_ENCRYPTION_KEY:}
     jwt:
-      secret: ${JWT_SECRET:CrediCasaFidiaCorpSuperSecureJwtSigningKey2026Secure256BitsMinimum}
+      secret: ${JWT_SECRET}
       expiration-ms: ${JWT_EXPIRATION_MS:86400000}
 
 # Springdoc OpenAPI / Swagger UI
@@ -55,5 +62,14 @@ springdoc:
 logging:
   level:
     root: INFO
-    com.fidiacorp.credicasa: DEBUG
+    com.fidiacorp.credicasa: INFO
     org.springframework.security: INFO
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never

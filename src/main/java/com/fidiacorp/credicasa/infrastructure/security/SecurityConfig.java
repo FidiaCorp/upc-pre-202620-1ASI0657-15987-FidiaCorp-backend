@@ -1,6 +1,9 @@
 package com.fidiacorp.credicasa.infrastructure.security;
 
 import org.springframework.context.annotation.Bean;
+import org.springframework.beans.factory.annotation.Value;
+import java.net.URI;
+import java.util.Arrays;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
@@ -33,8 +36,23 @@ public class SecurityConfig {
 
     private final JwtAuthFilter jwtAuthFilter;
 
-    public SecurityConfig(JwtAuthFilter jwtAuthFilter) {
+    private final List<String> allowedOrigins;
+
+    public SecurityConfig(JwtAuthFilter jwtAuthFilter,
+            @Value("${app.security.allowed-origins}") String origins) {
         this.jwtAuthFilter = jwtAuthFilter;
+        this.allowedOrigins = Arrays.stream(origins.split(","))
+                .map(String::trim).filter(value -> !value.isEmpty()).toList();
+        for (String origin : allowedOrigins) {
+            if (origin.equals("http://127.0.0.1:[*]") || origin.equals("http://localhost:[*]")) continue;
+            URI uri = URI.create(origin);
+            if (origin.contains("*") || !("http".equals(uri.getScheme()) || "https".equals(uri.getScheme()))
+                    || uri.getHost() == null || uri.getUserInfo() != null
+                    || (uri.getPath() != null && !uri.getPath().isEmpty())
+                    || uri.getQuery() != null || uri.getFragment() != null) {
+                throw new IllegalArgumentException("CORS requires explicit HTTP(S) origins");
+            }
+        }
     }
 
     @Bean
@@ -83,11 +101,11 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
-        config.setAllowedOriginPatterns(List.of("http://localhost:5173", "http://localhost:3000", "*"));
+        config.setAllowedOriginPatterns(allowedOrigins);
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"));
         config.setAllowedHeaders(List.of("Authorization", "Content-Type", "Accept", "X-Requested-With"));
         config.setExposedHeaders(List.of("Authorization", "Retry-After"));
-        config.setAllowCredentials(true);
+        config.setAllowCredentials(false);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", config);

@@ -29,6 +29,24 @@ class OpenApiContractTest {
         Path export=Path.of("target/openapi/generated.json");Files.createDirectories(export.getParent());
         Files.writeString(export,json.writerWithDefaultPrettyPrinter().writeValueAsString(doc));
     }
+    @Test void healthAndConfiguredCorsAreAvailableWithoutExposingDetails() throws Exception {
+        var health=http.getForEntity("/actuator/health",String.class);
+        assertThat(health.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(json.readTree(health.getBody()).path("status").asText()).isEqualTo("UP");
+        assertThat(json.readTree(health.getBody()).has("components")).isFalse();
+        HttpHeaders headers=new HttpHeaders();headers.setOrigin("http://localhost:5173");
+        headers.setAccessControlRequestMethod(HttpMethod.GET);
+        headers.setAccessControlRequestHeaders(List.of("Authorization"));
+        var allowed=http.exchange("/api/v1/users/me",HttpMethod.OPTIONS,new HttpEntity<>(headers),String.class);
+        assertThat(allowed.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(allowed.getHeaders().getAccessControlAllowOrigin()).isEqualTo("http://localhost:5173");
+        assertThat(allowed.getHeaders().getAccessControlExposeHeaders()).contains("Retry-After");
+        assertThat(allowed.getHeaders().getAccessControlAllowCredentials()).isFalse();
+        headers.setOrigin("https://untrusted.example");
+        var denied=http.exchange("/api/v1/users/me",HttpMethod.OPTIONS,new HttpEntity<>(headers),String.class);
+        assertThat(denied.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+        assertThat(denied.getHeaders().getAccessControlAllowOrigin()).isNull();
+    }
     private JsonNode operation(String path,String method){return doc.path("paths").path("/api/v1"+path).path(method);}
     private JsonNode schema(String name){return doc.path("components").path("schemas").path(name);}
     @Test void documentsEveryOperationWithCorrectPublicAndPrivateSecurity() {

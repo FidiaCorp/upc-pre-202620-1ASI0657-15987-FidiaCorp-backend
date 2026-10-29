@@ -23,9 +23,9 @@ Antes del segundo comando configure la conexión y claves mediante el entorno:
 
 | Variable | Uso actual |
 | --- | --- |
-| `SPRING_DATASOURCE_URL` | JDBC PostgreSQL; por defecto usa `DB_HOST=localhost`, `DB_PORT=5432`, `DB_NAME=credicasa_db`. |
-| `SPRING_DATASOURCE_USERNAME` / `SPRING_DATASOURCE_PASSWORD` | Credenciales de la base. La configuración de desarrollo tiene valores predeterminados; reemplazarlos en cada despliegue. |
-| `JWT_SECRET` | Clave propia UTF-8 de al menos 32 bytes; existe un fallback de desarrollo que no debe usarse para un despliegue. |
+| `SPRING_DATASOURCE_URL` | JDBC PostgreSQL obligatorio; sin conexión predeterminada. |
+| `SPRING_DATASOURCE_USERNAME` / `SPRING_DATASOURCE_PASSWORD` | Credenciales obligatorias de la base; sin valores de respaldo. |
+| `JWT_SECRET` | Clave propia UTF-8 obligatoria de al menos 32 bytes; sin fallback. |
 | `JWT_EXPIRATION_MS` | Vigencia del JWT en milisegundos; predeterminado 86400000. |
 | `TWO_FACTOR_ENCRYPTION_KEY` | Base64 de 32 bytes aleatorios para AES-256-GCM; sin clave válida, las operaciones que necesitan cifrar/descifrar devuelven 503. |
 | `SERVER_PORT` | Puerto HTTP, predeterminado 8080. |
@@ -39,11 +39,14 @@ Contrato generado: `/v3/api-docs`. `ApiContractDocumentation` describe la repres
 real de los DTO y las respuestas; `OpenApiContractTest` consulta el documento mediante
 HTTP real y exporta una copia a `target/openapi/generated.json`.
 
-Actualmente el esquema normal se administra con Hibernate `ddl-auto=update`. Los SQL
-`src/main/resources/db/migration/V1…V7` son DDL explícito para administración manual:
-**Flyway todavía no está integrado**. Compose monta únicamente V1 y la aplicación
-completa el esquema mediante Hibernate. Los archivos Docker existentes no se han
-validado ejecutándolos en este entorno, donde Docker no está instalado.
+Flyway aplica V1–V7 y Hibernate valida el esquema sin modificarlo. La adopción de una
+base existente exige backup, revisión y baseline explícito0; nunca se activa baseline
+automático. Salud real: `/actuator/health`. CORS acepta orígenes explícitos configurados
+con `CORS_ALLOWED_ORIGINS`, sin cookies ni comodines generales.
+
+Consulte [despliegue y migración](docs/deployment.md) para Compose, secretos, adopción
+de volúmenes existentes y validación PostgreSQL16 aislada (`mvn -Ppostgres-migrations verify`).
+Docker no está instalado en el entorno de validación; no se afirma ejecución de Compose.
 
 ## Operaciones y permisos
 
