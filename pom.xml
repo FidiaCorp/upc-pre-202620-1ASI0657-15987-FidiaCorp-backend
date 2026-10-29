@@ -18,6 +18,7 @@
     <description>Mortgage Calculation Service &amp; Core Backend for CrediCasa (FidiaCorp FinTech/PropTech)</description>
 
     <properties>
+        <postgres.binary.artifact>embedded-postgres-binaries-linux-amd64</postgres.binary.artifact>
         <java.version>21</java.version>
         <jjwt.version>0.12.6</jjwt.version>
         <springdoc.version>2.6.0</springdoc.version>
@@ -26,6 +27,19 @@
     </properties>
 
     <dependencies>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-database-postgresql</artifactId>
+        </dependency>
+
         <!-- Spring Boot Web -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -152,4 +166,33 @@
             </plugin>
         </plugins>
     </build>
+
+    <profiles>
+        <profile>
+            <id>postgres-migrations</id>
+            <properties><commons-lang3.version>3.20.0</commons-lang3.version></properties>
+
+            <dependencies>
+                <dependency>
+                    <groupId>io.zonky.test</groupId><artifactId>embedded-postgres</artifactId><version>2.2.2</version><scope>test</scope>
+                    <exclusions>
+                        <exclusion><groupId>io.zonky.test.postgres</groupId><artifactId>embedded-postgres-binaries-windows-amd64</artifactId></exclusion>
+                        <exclusion><groupId>io.zonky.test.postgres</groupId><artifactId>embedded-postgres-binaries-darwin-amd64</artifactId></exclusion>
+                        <exclusion><groupId>io.zonky.test.postgres</groupId><artifactId>embedded-postgres-binaries-linux-amd64</artifactId></exclusion>
+                        <exclusion><groupId>io.zonky.test.postgres</groupId><artifactId>embedded-postgres-binaries-linux-amd64-alpine</artifactId></exclusion>
+                    </exclusions>
+                </dependency>
+                <dependency><groupId>io.zonky.test.postgres</groupId><artifactId>${postgres.binary.artifact}</artifactId><version>16.14.0</version><scope>test</scope></dependency>
+            </dependencies>
+            <build><plugins>
+                <plugin><groupId>org.codehaus.mojo</groupId><artifactId>build-helper-maven-plugin</artifactId><version>3.6.1</version><executions><execution><id>postgres-tests</id><phase>generate-test-sources</phase><goals><goal>add-test-source</goal></goals><configuration><sources><source>src/postgres-test/java</source></sources></configuration></execution></executions></plugin>
+                <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-surefire-plugin</artifactId><configuration><includes><include>**/PostgresMigrationIT.java</include></includes><reportsDirectory>${project.build.directory}/postgres-migration-reports</reportsDirectory></configuration></plugin>
+            </plugins></build>
+        </profile>
+        <profile><id>postgres-mac-arm</id><activation><os><family>mac</family><arch>aarch64</arch></os></activation><properties><postgres.binary.artifact>embedded-postgres-binaries-darwin-arm64v8</postgres.binary.artifact></properties></profile>
+        <profile><id>postgres-mac-arm-alt</id><activation><os><family>mac</family><arch>arm64</arch></os></activation><properties><postgres.binary.artifact>embedded-postgres-binaries-darwin-arm64v8</postgres.binary.artifact></properties></profile>
+        <profile><id>postgres-mac-intel</id><activation><os><family>mac</family><arch>x86_64</arch></os></activation><properties><postgres.binary.artifact>embedded-postgres-binaries-darwin-amd64</postgres.binary.artifact></properties></profile>
+        <profile><id>postgres-linux-arm</id><activation><os><name>Linux</name><arch>aarch64</arch></os></activation><properties><postgres.binary.artifact>embedded-postgres-binaries-linux-arm64v8</postgres.binary.artifact></properties></profile>
+        <profile><id>postgres-windows</id><activation><os><family>windows</family><arch>amd64</arch></os></activation><properties><postgres.binary.artifact>embedded-postgres-binaries-windows-amd64</postgres.binary.artifact></properties></profile>
+    </profiles>
 </project>

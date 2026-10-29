@@ -33,7 +33,9 @@ public final class BrowserFixtureServer {
         // Internal command-line properties override inherited environment variables and application.yml.
         String[] settings={
             "--server.address=127.0.0.1","--server.port=0",
-            "--spring.datasource.url=jdbc:h2:mem:browser_"+namespace+";MODE=PostgreSQL;DB_CLOSE_DELAY=-1",
+            "--spring.flyway.enabled=false",
+                "--app.security.allowed-origins=http://127.0.0.1:[*],http://localhost:[*]",
+                "--spring.datasource.url=jdbc:h2:mem:browser_"+namespace+";MODE=PostgreSQL;DB_CLOSE_DELAY=-1",
             "--spring.datasource.driver-class-name=org.h2.Driver","--spring.datasource.username=sa","--spring.datasource.password=",
             "--spring.jpa.properties.hibernate.dialect=org.hibernate.dialect.H2Dialect","--spring.jpa.hibernate.ddl-auto=create-drop",
             "--spring.jpa.show-sql=false","--spring.h2.console.enabled=false",
