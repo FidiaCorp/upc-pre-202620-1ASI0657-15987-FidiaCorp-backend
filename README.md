@@ -1,798 +1,238 @@
-# CrediCasa — Backend Core Service (`mortgage-calculation-service`)
-### FidiaCorp FinTech / PropTech — Plataforma de Crédito Hipotecario
+# CrediCasa — API del Sprint 2
 
-[![Java](https://img.shields.io/badge/Java-21-orange.svg)](https://www.oracle.com/java/)
-[![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.3.4-brightgreen.svg)](https://spring.io/projects/spring-boot)
-[![Architecture](https://img.shields.io/badge/Architecture-Hexagonal%20%2F%20DDD-blue.svg)]()
-[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
+Backend Java 21/Spring Boot 3.3.4 con arquitectura hexagonal: `domain` contiene modelos,
+reglas y puertos; `application` coordina los casos de uso; `infrastructure` implementa
+persistencia y seguridad; `interfaces/rest` publica la API.
 
----
+El incremento incluye cuentas persistentes, perfil, TOTP, revocación de JWT, catálogo,
+ofertas por destinatario, avisos y cronogramas. **Las ofertas y referencias de BCP,
+Interbank y SBS son DEMO/simuladas**: no constituyen aprobaciones bancarias ni consultas
+o tarifas oficiales en tiempo real. No se ofrece una garantía de latencia.
 
-## 1. Visión General del Proyecto
+## Ejecutar y consultar el contrato
 
-**CrediCasa** es la plataforma FinTech/PropTech desarrollada por **FidiaCorp** diseñada para revolucionar la adquisición y simulación de créditos hipotecarios en el mercado peruano. Conecta a compradores de vivienda con entidades financieras y salas de venta inmobiliarias, ofreciendo simulaciones exactas, transparentes y en tiempo real.
-
-Este repositorio contiene el **Backend Core del Sistema**: el microservicio transaccional `mortgage-calculation-service`, desarrollado en **Java 21 con Spring Boot 3**, estructurado bajo los principios de **Clean Architecture**, **Arquitectura Hexagonal (Ports & Adapters)** y **Domain-Driven Design (DDD)**.
-
-El frontend cliente está construido de forma desacoplada en **Vue 3 + Vite**, consumiendo las APIs RESTful expuestas por este backend.
-
----
-
-## 2. Mapeo de los 3 Drivers Arquitectónicos en el Código
-
-El diseño e implementación de este microservicio responde directamente a los tres Architectural Drivers seleccionados en el **Capítulo IV** del diseño arquitectónico:
-
-```
-┌────────────────────────────────────────────────────────────────────────────────────────┐
-│                        MAPEO DE DRIVERS ARQUITECTÓNICOS                                │
-├────────────────────────────────┬───────────────────────────────────────────────────────┤
-│ Driver Arquitectónico          │ Componentes y Clases Clave en el Código               │
-├────────────────────────────────┼───────────────────────────────────────────────────────┤
-│ DRIVER 1: SEGURIDAD            │ • SecurityConfig.java                                 │
-│ (ASR-SEC)                      │ • JwtTokenProvider.java                               │
-│ Autenticación y RBAC           │ • JwtAuthFilter.java                                  │
-│                                │ • CustomUserDetailsService.java                       │
-├────────────────────────────────┼───────────────────────────────────────────────────────┤
-│ DRIVER 2: RENDIMIENTO Y        │ • FrenchAmortizationEngine.java                       │
-│ PRECISIÓN (ASR-PERF)           │ • FinancialMetricsCalculator.java                     │
-│ Motor Francés Determinado      │ • SbsAdapter.java (@Cacheable sub-100ms)              │
-│ y Métricas Financieras         │ • FrenchAmortizationEngineTest.java                   │
-├────────────────────────────────┼───────────────────────────────────────────────────────┤
-│ DRIVER 3: MODIFICABILIDAD E    │ • BankingIntegrationPort.java (Puerto de Dominio)     │
-│ INTEROPERABILIDAD (ASR-MOD)    │ • BcpBankingAdapter.java (Adaptador BCP)              │
-│ Patrón Ports & Adapters        │ • InterbankBankingAdapter.java (Adaptador Interbank)  │
-│ y Reglas ArchUnit              │ • BankingIntegrationCompositeAdapter.java             │
-│                                │ • HexagonalArchitectureTest.java (ArchUnit)           │
-└────────────────────────────────┴───────────────────────────────────────────────────────┘
-```
-
----
-
-### DRIVER 1: SEGURIDAD (ASR-SEC) — Autenticación y Control de Acceso
-
-- **Sesiones sin estado (Stateless):** Configuración explícita en `SecurityConfig` utilizando `SessionCreationPolicy.STATELESS`. El servidor no retiene sesiones HTTP ni cookies, garantizando escalabilidad horizontal.
-- **Generación y Validación JWT:** `JwtTokenProvider` implementa tokens firmados mediante HMAC-SHA256 con claves criptográficas seguras, codificando el identificador del usuario y sus roles asignados (`roles`).
-- **Control de Acceso Basado en Roles (RBAC):**
-  - `ROLE_CLIENT`: Comprador de vivienda; facultado para simular escenarios y consultar ofertas.
-  - `ROLE_REALTOR`: Asesor inmobiliario en sala de ventas; facultado para gestionar propuestas y cotizaciones con clientes.
-  - Endpoints protegidos mediante anotaciones de seguridad declarativa `@PreAuthorize("hasAnyRole('ROLE_CLIENT', 'ROLE_REALTOR')")`.
-- **Encriptación con BCrypt:** Las contraseñas se gestionan encriptadas con `BCryptPasswordEncoder` (fuerza de cálculo configurable).
-- **Filtro de Seguridad:** `JwtAuthFilter` intercepta cada petición entrante, verifica el encabezado `Authorization: Bearer <token>` y propaga la identidad autenticada al contexto de seguridad (`SecurityContextHolder`).
-
----
-
-### DRIVER 2: RENDIMIENTO Y PRECISIÓN (ASR-PERF) — Motor Financiero Determinado
-
-- **Método Francés Ordinario Vencido (Convención 30/360 Bancaria Peruana):**
-  - Conversión estricta de Tasa Efectiva Anual (TEA) a Tasa Efectiva Mensual (TEM):
-    $$\text{TEM} = (1 + \text{TEA})^{30/360} - 1 = (1 + \text{TEA})^{1/12} - 1$$
-- **Aritmética de Alta Precisión con `BigDecimal`:**
-  - Tasas y factores calculados con escala extendida (`MathContext.DECIMAL128`, tasas de entrada de hasta 8 decimales y TEM de 24).
-  - Redondeo bancario monetario **`RoundingMode.HALF_EVEN`** a 2 decimales para importes de cuotas, intereses, seguros y amortizaciones.
-- **Liquidación Estricta del Saldo Final a 0.00 Exacto (Architectural Concern AC-02):**
-  - En la cuota final $N$, la amortización liquida exactamente el saldo inicial restante:
-    $$A_N = S_{N-1}, \quad R_N = A_N + I_N, \quad S_N = 0.00$$
-  - Sin gracia total, la suma de amortizaciones coincide con el préstamo. Con gracia total incluye el interés capitalizado.
-- **Soporte de Variantes del Producto Financiero:**
-  - **Gracia Total (`TOTAL`):** Los intereses generados se capitalizan al saldo deudor ($S_k = S_{k-1} + I_k$), amortización 0.00. Al concluir la gracia, se recalcula la cuota fija sobre el saldo capitalizado y los meses restantes.
-  - **Gracia Parcial (`PARTIAL`):** Se cancelan intereses generados mensualmente, la amortización es 0.00 y el saldo permanece constante. Al concluir, se amortiza en el plazo remanente.
-  - **Cuota Balón (`BalloonPayment`):** Soporte de pagos extraordinarios al vencimiento con deducción en el valor actual de la anualidad regular.
-- **Métricas Financieras Completas:**
-  - **TIR Mensual:** Solver numérico robusto en `FinancialMetricsCalculator` mediante **bisección con acotación adaptativa** sobre flujos normalizados del deudor, sin inventar una tasa cuando no hay convergencia.
-  - **TCEA Real Anualizada:**
-    $$\text{TCEA} = (1 + \text{TIR}_{\text{mensual}})^{12} - 1$$
-    Incorpora cuota de amortización, intereses, seguro de desgravamen, seguro multirriesgo del bien y cargos fijos.
-  - **VAN (Valor Actual Neto):** Descontado a la tasa de oportunidad de capital (COK) o TEA de referencia.
-- **Caché en Memoria para Benchmarks SBS (Sub-100 ms):**
-  - `SbsAdapter.fetchOfficialBenchmarks` utiliza `@Cacheable(value = "sbsRates", key = "#currency")`.
-  - La primera consulta procesa y normaliza el boletín estadístico; las subsecuentes responden en menos de 5 ms desde memoria.
-
----
-
-### DRIVER 3: MODIFICABILIDAD E INTEROPERABILIDAD (ASR-MOD) — Patrón Ports & Adapters
-
-- **Arquitectura Hexagonal (DDD):**
-  - **Capa de Dominio (`domain`):** Núcleo agnóstico de frameworks, JPA y Spring. Define entidades (`Quotation`, `Installment`, `BankRateBenchmark`), value objects, servicios de cálculo y los puertos (`BankingIntegrationPort`, `QuotationRepositoryPort`).
-  - **Capa de Aplicación (`application`):** Orquesta los casos de uso (`CalculateCreditSimulationService`, `GetBankRatesService`) y traduce entre DTOs y el modelo de dominio.
-  - **Capa de Infraestructura (`infrastructure`):** Implementa los adaptadores técnicos (`BcpBankingAdapter`, `InterbankBankingAdapter`, `SbsAdapter`, `QuotationRepositoryAdapter`, seguridad JWT).
-  - **Capa de Interfaces (`interfaces`):** Controladores REST (`SimulationController`, `BankRatesController`, `AuthController`) y configuración OpenAPI Swagger.
-- **Inversión de Dependencias:** El dominio define el contrato `BankingIntegrationPort`. Los adaptadores externos se encargan de desacoplar los formatos propietarios (BCP e Interbank) convirtiéndolos al modelo canónico común.
-- **Garantía Automatizada con ArchUnit:** La clase de test `HexagonalArchitectureTest` valida de forma continua en el pipeline que `domain` no tenga dependencias sobre `infrastructure` ni `interfaces`.
-
----
-
-## 3. Estructura del Repositorio
-
-```
-credicasa-backend/
-├── pom.xml                                   # Configuración de dependencias Maven
-├── Dockerfile                                # Multi-stage build (Builder + Runtime seguro)
-├── docker-compose.yml                        # Orquestación de PostgreSQL 16 + Backend
-├── README.md                                 # Documentación técnica del microservicio
-└── src/
-    ├── main/
-    │   ├── java/com/fidiacorp/credicasa/
-    │   │   ├── CrediCasaApplication.java    # Punto de entrada Spring Boot & IoC Beans
-    │   │   │
-    │   │   ├── domain/                       # NÚCLEO DE DOMINIO (Agnóstico a frameworks)
-    │   │   │   ├── model/                    # Entidades y Value Objects
-    │   │   │   │   ├── Quotation.java        # Aggregate Root de la simulación
-    │   │   │   │   ├── Installment.java      # Detalle de cuota mensual
-    │   │   │   │   ├── FinancialMetrics.java # TEA, TEM, TIR, TCEA, VAN
-    │   │   │   │   ├── BankRateBenchmark.java# Benchmark bancario canónico
-    │   │   │   │   ├── GracePeriod.java      # Período de gracia (NONE, PARTIAL, TOTAL)
-    │   │   │   │   ├── BalloonPayment.java   # Cuota balón
-    │   │   │   │   ├── PropertySnapshot.java # Inmueble evaluado
-    │   │   │   │   └── ClientProfile.java    # Perfil del comprador
-    │   │   │   ├── ports/in/                 # Casos de uso del dominio (Inbound Ports)
-    │   │   │   │   ├── CalculateScheduleUseCase.java
-    │   │   │   │   ├── CalculateScheduleCommand.java
-    │   │   │   │   └── GetBankRatesUseCase.java
-    │   │   │   ├── ports/out/                # Interfaces de salida (Outbound Ports)
-    │   │   │   │   ├── QuotationRepositoryPort.java
-    │   │   │   │   └── BankingIntegrationPort.java
-    │   │   │   └── service/                  # Servicios de dominio matemáticos
-    │   │   │       ├── FrenchAmortizationEngine.java
-    │   │   │       └── FinancialMetricsCalculator.java
-    │   │   │
-    │   │   ├── application/                  # CAPA DE APLICACIÓN
-    │   │   │   ├── dto/request/              # SimulationRequestDto, AuthRequestDto
-    │   │   │   ├── dto/response/             # SimulationResponseDto, InstallmentDto, BankRateResponseDto
-    │   │   │   └── usecase/                  # Servicios coordinadores de aplicación
-    │   │   │       ├── CalculateCreditSimulationService.java
-    │   │   │       └── GetBankRatesService.java
-    │   │   │
-    │   │   ├── infrastructure/               # CAPA DE INFRAESTRUCTURA
-    │   │   │   ├── adapters/banking/         # Adaptadores bancarios e integración SBS
-    │   │   │   │   ├── BcpBankingAdapter.java
-    │   │   │   │   ├── InterbankBankingAdapter.java
-    │   │   │   │   ├── SbsAdapter.java (@Cacheable)
-    │   │   │   │   └── BankingIntegrationCompositeAdapter.java
-    │   │   │   ├── persistence/              # Persistencia JPA y Adaptadores
-    │   │   │   │   ├── entity/               # QuotationJpaEntity, InstallmentJpaEntity
-    │   │   │   │   ├── repository/           # QuotationJpaRepository (Spring Data)
-    │   │   │   │   └── QuotationRepositoryAdapter.java
-    │   │   │   └── security/                 # Seguridad JWT y RBAC
-    │   │   │       ├── JwtTokenProvider.java
-    │   │   │       ├── JwtAuthFilter.java
-    │   │   │       ├── CustomUserDetailsService.java
-    │   │   │       └── SecurityConfig.java
-    │   │   │
-    │   │   └── interfaces/rest/              # CAPA DE INTERFACES (API REST y Swagger)
-    │   │       ├── AuthController.java
-    │   │       ├── SimulationController.java
-    │   │       ├── BankRatesController.java
-    │   │       ├── OpenApiConfig.java
-    │   │       └── RestExceptionHandler.java
-    │   │
-    │   └── resources/
-    │       ├── application.yml               # Configuración del microservicio
-    │       └── db/migration/
-    │           └── V1__init_schema.sql       # Script de inicialización DDL PostgreSQL
-    │
-    └── test/java/com/fidiacorp/credicasa/
-        ├── domain/service/
-        │   └── FrenchAmortizationEngineTest.java   # Tests unitarios del motor (200k a 20 años)
-        └── architecture/
-            └── HexagonalArchitectureTest.java      # Tests de arquitectura con ArchUnit
-```
-
----
-
-## 4. Cuentas persistentes y perfil (US02)
-
-No se crean cuentas de demostración al iniciar. Registre una cuenta mediante
-`POST /api/v1/auth/register` con `firstName`, `lastName`, `email` y `password`.
-El registro público asigna únicamente `ROLE_CLIENT`; no permite elegir roles.
-Las cuentas se conservan en PostgreSQL y las contraseñas se almacenan con BCrypt.
-
-Los nombres son obligatorios (máximo 100 caracteres), el correo es válido, único,
-normalizado a minúsculas y tiene máximo 254 caracteres. La contraseña requiere
-entre 12 y 72 caracteres y no debe superar 72 bytes UTF-8.
-
-Con el token, `GET /api/v1/users/me` obtiene el perfil y `PUT /api/v1/users/me`
-actualiza `firstName`, `lastName` y `email` (todos obligatorios). La respuesta es
-`{id, firstName, lastName, email, roles}`. El UUID del token permanece estable al
-cambiar el correo; los próximos inicios de sesión utilizan el correo nuevo.
-Los errores de validación devuelven 400 con `validationErrors`, los correos
-ocupados 409 y el acceso sin sesión válida 401.
-
-La tabla `accounts` se genera con el `ddl-auto=update` actual. El archivo
-`V2__accounts.sql` documenta el DDL para instalaciones con gestión manual del
-esquema; el proyecto no ejecuta Flyway automáticamente.
-
----
-
-### Verificación en dos pasos (TOTP)
-
-Configure `TWO_FACTOR_ENCRYPTION_KEY` con una clave aleatoria de **32 bytes en
-Base64**, almacenada en el gestor de secretos del despliegue y conservada entre
-reinicios. Puede generar una clave con `openssl rand -base64 32`; no la registre
-en Git, logs ni documentación. Sin una clave válida el servicio mantiene las
-cuentas normales disponibles, pero setup y validación de secretos 2FA devuelven
-503 `TWO_FACTOR_UNAVAILABLE`. Cambiar o perder esta clave impide descifrar los
-secretos existentes; no existe clave predeterminada ni recuperación automática.
-Docker Compose admite inyectarla con la variable del mismo nombre.
-
-Flujo con `Authorization: Bearer <token>`:
-
-- `GET /api/v1/users/me/two-factor` devuelve `{enabled, pending}`, sin secretos.
-- `POST /api/v1/users/me/two-factor/setup` con `{password}` devuelve
-  `{secret, otpauthUri, expiresIn:600}` y `Cache-Control: no-store`. Introduzca
-  el secreto manualmente en su autenticador o importe la URI compatible.
-  Antes de activar puede regenerar la configuración: la anterior deja de servir.
-  Esta operación exige contraseña correcta y no reinicia los intentos fallidos.
-- `POST /api/v1/users/me/two-factor/confirm` con `{otp}` activa la configuración
-  pendiente antes de los diez minutos y devuelve `{enabled:true,pending:false}`.
-- `POST /api/v1/users/me/two-factor/disable` con `{password,otp}` exige contraseña
-  y un código nuevo, y devuelve `{enabled:false,pending:false}`.
-
-Para una cuenta activa, `POST /api/v1/auth/login` acepta `{email,password,otp}`.
-La contraseña se valida primero; sin el segundo factor válido no se emite JWT.
-La respuesta de éxito mantiene `{token,type,email,roles,expiresIn}`. Las sesiones
-JWT emitidas previamente conservan su vigencia hasta expirar o cerrar la sesión
-mediante `/api/v1/auth/logout`; activar 2FA no revoca otras sesiones.
-
-Los errores 2FA incluyen `code` además de `status`, `error`, `message`, `timestamp`
-y `validationErrors`. Login sin código devuelve 401 `TWO_FACTOR_REQUIRED`;
-código incorrecto, expirado o reutilizado devuelve 401 `TWO_FACTOR_INVALID`.
-Contraseña incorrecta en gestión devuelve 401 `INVALID_CREDENTIALS`; estos
-errores de validación no implican que el JWT presentado haya expirado.
-Setup ya activo devuelve 409 `TWO_FACTOR_ALREADY_ENABLED`, desactivación sin
-2FA activo 409 `TWO_FACTOR_NOT_ENABLED`, y confirmación vencida 400
-`TWO_FACTOR_SETUP_EXPIRED`. Cuerpos mal formados o campos inválidos devuelven 400
-con el formato de validación habitual.
-
-Cinco fallos de OTP o de contraseña de gestión bloquean las operaciones 2FA y
-los nuevos ingresos durante quince minutos: 429 `TWO_FACTOR_LOCKED` con
-`Retry-After` en segundos. Intentos y bloqueo son persistentes, compartidos por
-cuenta y no se reinician al regenerar setup ni al abrir una sesión nueva.
-Confirmar, ingresar con segundo factor o desactivar correctamente reinicia los
-fallos. Los errores de contraseña del login primario mantienen la autenticación
-habitual y no incrementan este contador específico del segundo factor.
-
-El algoritmo sigue [RFC 6238](https://www.rfc-editor.org/rfc/rfc6238.html):
-HMAC-SHA1, secreto aleatorio de 20 bytes, seis dígitos y pasos de 30 segundos.
-Solo se admite el paso actual, sin tolerancia para códigos expirados ni futuros;
-sincronice el reloj del servidor y del autenticador. Cada código se consume una
-sola vez, incluso entre solicitudes concurrentes, mediante bloqueo transaccional
-y contador persistente. Después de confirmar o ingresar espere al siguiente
-código antes de otra operación. Los secretos se cifran en reposo con AES-256-GCM,
-nonce aleatorio y UUID de la cuenta como datos autenticados. El secreto legible
-solo se devuelve al generar una configuración pendiente; no se devuelve al
-consultar el estado, perfil o una configuración activa.
-
-Pruebas `TotpSecurityTest` y `TwoFactorIntegrationTest`: vectores oficiales RFC,
-contador de 64 bits, cifrado, clave ausente/incorrecta, reloj fijo, vencimientos,
-consumo concurrente, bloqueo persistente y autorización antes de emitir JWT.
-
----
-
-### Cierre de sesión y revocación del token actual
-
-`POST /api/v1/auth/logout`, sin cuerpo y con `Authorization: Bearer <token>`,
-revoca la sesión presentada y devuelve **204 sin contenido**. Este endpoint
-requiere autenticación incluso dentro del prefijo público `/auth`.
-Un token ausente, inválido, expirado o ya revocado devuelve 401.
-
-Solo se revoca ese token: otras sesiones de la misma cuenta permanecen válidas.
-Cada nuevo JWT incluye un `jti` aleatorio, por lo que ingresar inmediatamente
-después del cierre genera un token diferente. Los campos de la respuesta de
-login no cambian. El servidor ignora cualquier token o identificador enviado
-en el cuerpo de logout; utiliza exclusivamente el Bearer autenticado.
-
-La tabla `revoked_tokens` conserva únicamente el hash SHA-256 y la expiración
-del JWT, nunca el token completo. El filtro consulta esta revocación persistente
-en cada petición con un JWT válido; reiniciar el servicio no restaura tokens
-revocados mientras se conserve la base de datos. Dos cierres concurrentes del
-mismo token no generan registros duplicados. Una solicitud que ya superó la
-validación antes del cierre puede terminar; las verificaciones posteriores
-rechazan el token revocado.
-
-La limpieza programada elimina registros expirados cada hora. Puede ajustar el
-intervalo con `app.security.jwt.revocation-cleanup-ms` (milisegundos). El JWT
-expirado se rechaza aunque su registro aún no se haya eliminado. El archivo
-`V4__token_revocation.sql` incluye el DDL para gestión manual del esquema; la
-configuración actual crea la tabla mediante Hibernate `ddl-auto=update`.
-
-Ante un fallo de red o de servidor, el cliente no puede asumir que la revocación
-se completó. Debe eliminar la sesión local y puede reintentar el cierre de ese
-mismo token sin restaurar su acceso. Si el servidor responde 401, ese token ya
-no permite acceso autenticado.
-
-CORS expone `Retry-After` además de `Authorization`, permitiendo que la UI lea
-la espera real del bloqueo 2FA en llamadas entre orígenes. Las pruebas cubren el
-preflight autenticado y la exposición de esa cabecera en una respuesta 429.
-
-`SessionLogoutIntegrationTest` verifica aislamiento entre sesiones, hash y
-expiración persistidos, lectura desde una nueva instancia del servicio, tokens
-inmediatos distintos, concurrencia, limpieza de expirados y CORS.
-
----
-
-### Catálogo persistente de inmuebles
-
-Los endpoints `/api/v1/properties` requieren JWT y rol `ROLE_CLIENT` o
-`ROLE_REALTOR`. Ambos roles pueden registrar inmuebles y consultar el catálogo;
-ningún rol puede eliminar un inmueble de otro propietario.
-
-`POST /api/v1/properties` devuelve **201** con cabecera `Location`. Solicitud:
-
-```json
-{
-  "title": "Departamento con terraza",
-  "address": "Av. Central 120, Lima",
-  "description": "Departamento luminoso cerca de servicios",
-  "price": "250000.50",
-  "currency": "PEN",
-  "tags": ["terraza", "estacionamiento"]
-}
-```
-
-`title` y `address` son obligatorios, se recortan y admiten hasta 120 y 250
-caracteres respectivamente. `description` es opcional, máximo 2000 caracteres,
-y se conserva como cadena vacía si no se envía. `price` debe ser al menos 0.01,
-con hasta 16 dígitos enteros y 2 decimales; acepta número JSON o cadena decimal
-para evitar pérdida de precisión en clientes JavaScript. `currency` solo admite
-`PEN` y `USD`. `tags` es opcional, máximo 20 elementos de hasta 40 caracteres;
-no admite etiquetas vacías. Se normalizan con Unicode NFKC, minúsculas, recorte
-y espacios internos únicos; se eliminan duplicados y se ordenan. Por ejemplo,
-`[" ＴＥＲＲＡＺＡ ","terraza","Con   Estacionamiento"]` se guarda como
-`["con estacionamiento","terraza"]`.
-
-El propietario se obtiene exclusivamente del UUID del principal autenticado;
-un `ownerId` enviado en el cuerpo no cambia esa identidad. La respuesta de
-registro y `GET /api/v1/properties/{id}` contienen
-`{id,ownerId,title,address,description,price,currency,tags,createdAt}`.
-`price` siempre se devuelve como cadena decimal exacta, incluido el máximo
-`"9999999999999999.99"`; el cliente no debe convertirlo a `Number` para transportarlo.
-`createdAt` utiliza ISO8601 con zona UTC. El UUID propio está disponible en
-`GET /api/v1/users/me`; los clientes pueden compararlo con `ownerId`.
-
-`GET /api/v1/properties` admite:
-
-- `q`: búsqueda literal sin distinguir mayúsculas en título, dirección o
-  descripción; máximo 120 caracteres. `%`, `_` y barras invertidas no son
-  comodines SQL. Un término vacío no filtra.
-- `tags`: parámetros repetidos, por ejemplo
-  `?tags=terraza&tags=estacionamiento`. Se normalizan igual que al registrar y
-  se exigen **todas** las etiquetas seleccionadas, con un máximo de 20.
-- `mine=true`: limita el catálogo al usuario autenticado; por defecto `false`.
-- `page`: página desde 0; `size`: por defecto 20 y entre 1 y 100.
-
-Texto, etiquetas, propietario y estado activo se combinan con AND. El orden es
-`createdAt DESC, id DESC`, estable entre páginas. Respuesta:
-
-```json
-{"items":[],"page":0,"size":20,"totalElements":0,"totalPages":0}
-```
-
-`DELETE /api/v1/properties/{id}` devuelve **204** solo para el propietario. Un
-tercero recibe 403 y no modifica datos. La eliminación establece `deletedAt`:
-el inmueble deja de aparecer en consultas, filtros y detalle. Un ID inexistente
-o eliminado, incluido un segundo intento de eliminación, devuelve 404. Cancelar
-la confirmación en la interfaz no debe enviar DELETE. No se expone PUT ni PATCH.
-
-Las cotizaciones mantienen sus instantáneas independientes: no se cambian
-`PropertySnapshot`, `Quotation`, cronogramas ni importes al eliminar del
-catálogo. La prueba de integración compara una simulación persistida antes y
-después de eliminar el inmueble.
-
-Entradas inválidas y paginación fuera de límites devuelven 400; token ausente o
-inválido 401; rol no permitido 403. `V5__properties.sql` incluye tablas e índices
-para gestión manual; el despliegue actual usa Hibernate `ddl-auto=update`.
-
----
-
-### Ofertas DEMO por destinatario y avisos en la aplicación
-
-Las ofertas de este incremento son **demostraciones**, identificadas siempre
-con `origin:"DEMO"`. Seleccionar BCP o Interbank no implica que ese banco haya
-emitido, aprobado ni financiado un crédito. No se llama a APIs bancarias reales.
-Los nombres y títulos se derivan del código de banco del lado del servidor.
-
-`POST /api/v1/offers` requiere `ROLE_REALTOR`, una propiedad activa del propio
-asesor y un destinatario registrado con `ROLE_CLIENT`. El emisor se obtiene del
-UUID autenticado y el destinatario se resuelve por correo normalizado; no se
-aceptan identidades, origen, títulos ni identificadores de simulación del cuerpo.
-Solicitud (respuesta 201 con `Location`):
-
-```json
-{
-  "recipientEmail": "cliente@example.com",
-  "propertyId": "UUID_DEL_INMUEBLE_PROPIO",
-  "bankCode": "BCP",
-  "loanAmount": "200000.00",
-  "currency": "PEN",
-  "annualInterestRate": "0.085",
-  "termMonths": 240,
-  "startDate": "2027-01-01"
-}
-```
-
-La moneda debe ser `PEN` o `USD` e igual a la del inmueble. El préstamo es
-positivo, con máximo 16 enteros y 2 decimales, y no puede superar el precio.
-`annualInterestRate` es TEA decimal estricta, mayor que 0 y menor o igual que 1,
-con hasta 8 decimales: `"0.085"` significa 8.5%; `"8.5"` se rechaza, no se convierte.
-`termMonths` es obligatorio entre 1 y 360; `startDate` es una fecha ISO obligatoria.
-`bankCode` admite exclusivamente `BCP` e `INTERBANK`.
-
-La respuesta contiene
-`{id,recipientId,issuerId,bankCode,bankName,title,origin,property,loanAmount,currency,annualInterestRate,termMonths,startDate,simulationId,createdAt}`.
-`property` es la instantánea `{id,title,address,price,currency}`, copiada al emitir;
-permanece disponible aunque el inmueble se elimine del catálogo.
-Montos y tasa se devuelven como **cadenas decimales exactas**, incluido el monto
-máximo `"9999999999999999.99"`. `simulationId` comienza en `null` y se completa al generar el cronograma mediante
-`POST /api/v1/offers/{id}/schedule`, sin aceptar una asociación arbitraria del cliente.
-
-`GET /api/v1/offers?page=0&size=20` devuelve únicamente ofertas recibidas por el
-principal actual, con `{items,page,size,totalElements,totalPages}`.
-`GET /api/v1/offers/{id}` permite consultar solo al destinatario, incluso cuando
-el consultante es el emisor. Un tercero recibe 404 sin detalles del recurso.
-Los roles CLIENT y REALTOR pueden consultar sus propias bandejas; el registro
-público conserva exclusivamente el rol CLIENT y no concede permisos de emisión.
-
-La emisión guarda oferta y aviso en la **misma transacción**: si falla uno,
-ninguno queda persistido. Cada oferta genera exactamente un aviso por su ID.
-
-`GET /api/v1/notifications?unreadOnly=false&page=0&size=20` devuelve
-`{items,page,size,totalElements,totalPages,unreadCount}`. `unreadCount` es el total
-sin leer del usuario, independiente de la página o filtro. Un aviso contiene
-`{id,offerId,type:"CREDIT_OFFER",origin:"DEMO",title,createdAt,readAt}`.
-`readAt` comienza en `null`. `PATCH /api/v1/notifications/{id}/read`, sin cuerpo,
-devuelve 200 con ese aviso marcado como leído. Repetirlo conserva el primer
-instante de lectura, incluso con solicitudes concurrentes; un aviso ajeno o
-inexistente devuelve 404. No hay operaciones para marcar avisos de otros usuarios.
-
-Las listas ordenan `createdAt DESC,id DESC`, usan páginas desde 0 y tamaño por
-defecto 20, mínimo 1 y máximo 100. Consultas y detalles privados envían
-`Cache-Control: no-store`. El cliente consultará la bandeja de avisos cada
-**5 segundos** mientras mantenga una sesión activa y la aplicación esté visible;
-el aviso se descubre sin recargar manualmente. No se implementa SSE ni push.
-Esta tarea proporciona el contrato de polling; su integración visual pertenece
-al frontend. El intervalo observado se comprueba en sus pruebas de navegador.
-
-Sin sesión se recibe 401, sin rol de emisión 403, por inmueble ajeno 403, por
-recurso o destinatario no disponible 404 y por entradas inválidas 400. Una propiedad
-ya eliminada no permite generar ofertas nuevas; las anteriores conservan su
-instantánea.
-
-**Provisionamiento administrativo:** no existen asesores precargados ni un
-endpoint público para asignar roles. Para una demostración local, un administrador
-puede registrar primero una cuenta con credenciales propias y asignarle el rol
-mediante acceso autorizado a su base de datos, por ejemplo:
-
-```sql
--- Solo en la base de demostración administrada; sustituya el correo registrado.
-UPDATE accounts SET roles = 'ROLE_REALTOR' WHERE email = 'asesor-demo@example.com';
-```
-
-Después se inicia sesión de nuevo y se registra un inmueble con esa cuenta.
-El cliente destinatario utiliza una cuenta distinta con el rol de registro
-normal. Esta instrucción no crea usuarios ni contraseñas de demostración en
-producción y no se ejecuta automáticamente.
-
-`V6__credit_offers_and_notifications.sql` documenta el DDL para administración
-manual; la configuración actual usa Hibernate `ddl-auto=update`.
-`CreditOfferIntegrationTest` cubre privacidad por destinatario, atomicidad ante
-fallo de inserción del aviso, roles y propietario, términos inválidos, precisión
-máxima, instantánea tras eliminar el inmueble, paginación y lectura concurrente.
-
----
-
-### Simulaciones propias y cronograma de una oferta
-
-`POST /api/v1/simulations/calculate` devuelve 201 y asigna el propietario desde el
-UUID autenticado. `GET /api/v1/simulations/{quotationId}` solo devuelve 200 a ese
-propietario; un tercero o una simulación histórica sin propietario devuelve 404.
-No se deducen propietarios de registros antiguos por correo ni por información
-presentada por el cliente. `clientProfile` se conserva como entrada heredada,
-pero su identidad no se utiliza: UUID, nombre y correo proceden de la cuenta.
-
-Contrato de entrada, además de `loanAmount` y `currency` obligatorios:
-
-- `loanAmount` y `propertyValue` son positivos, hasta 16 enteros y 2 decimales.
-  El valor del inmueble se puede omitir y entonces coincide con el préstamo;
-  el préstamo no puede superarlo.
-- `annualInterestRate` es TEA decimal en `(0,1]`, hasta 8 decimales y mínimo
-  efectivo `0.00000001`. Un porcentaje como `8.5` se rechaza. La UI convierte
-  el porcentaje a decimal sin recurrir a aritmética de punto flotante.
-- `termMonths` admite 1–360 y `termYears` admite 1–30. Si se envían ambos deben
-  representar el mismo plazo. Omitir ambos conserva el valor predeterminado 240.
-- `gracePeriodType` es `NONE` (predeterminado), `PARTIAL` o `TOTAL`.
-  `NONE` exige 0 meses; las otras variantes requieren `gracePeriodMonths`
-  entre 1 y 36 y estrictamente menor al plazo total.
-- `balloonPaymentAmount` y `balloonPaymentMonth` deben ser coherentes: sin
-  balón se omiten o son 0; con importe positivo el mes debe ser el vencimiento
-  y el importe no puede superar el préstamo. Se rechazan balones intermedios,
-  que este motor no implementa.
-- `lifeInsuranceRate` y `propertyInsuranceRate` son tasas mensuales en `[0,1]`
-  con hasta 8 decimales, por defecto 0. `monthlyAdminFee` es un importe no
-  negativo con hasta 16 enteros y 2 decimales, por defecto 0. Se cobran seguros
-  y gastos también durante los meses de gracia.
-- `discountRateAnnual` (COK) acepta `[0,1]` con hasta 8 decimales.
-  Omitirlo utiliza la TEA; enviar 0 descuenta a tasa cero y se conserva como 0.
-- `startDate` es una fecha ISO `YYYY-MM-DD`, con año 1900–9990; también se exige
-  que `startDate.plusMonths(termMonths)` no supere 9999. Las fechas históricas
-  son válidas. Omitirla utiliza el día UTC actual. `propertyAddress` es opcional,
-  máximo 250 caracteres.
-
-Importes y tasas admiten cadenas decimales como `"200000.00"` y `"0.085"`.
-Los errores de formato, valores negativos no permitidos y combinaciones
-incompatibles devuelven 400 antes de guardar.
-
-La respuesta mantiene
-`{quotationId,currency,loanAmount,propertyValue,termMonths,estimatedMonthlyInstallment,metrics,status,schedule,createdAt}`.
-**Todos los importes y métricas decimales son cadenas sin notación científica**,
-incluidos ceros y VAN negativo. Las fechas de cuotas son ISO sin conversión de
-zona horaria. `estimatedMonthlyInstallment` corresponde al primer pago regular,
-no al mes de gracia. Cada cuota incluye número, fecha, saldo inicial, interés,
-amortización, cuota pura, seguros, gasto administrativo, pago total y saldo final.
-Las consultas privadas envían `Cache-Control: no-store`.
-
-Para una oferta recibida:
-
-- `POST /api/v1/offers/{id}/schedule`, sin cuerpo, devuelve 200 al generar y
-  también al repetir. Solo el destinatario puede solicitarlo. La generación
-  y asociación son una transacción con bloqueo de la oferta: solicitudes
-  concurrentes producen un único cronograma persistido.
-- `GET /api/v1/offers/{id}/schedule` recupera el mismo cronograma guardado.
-  Oferta ajena, cronograma todavía no generado o recurso inexistente devuelven 404.
-- Préstamo, TEA, moneda, plazo, fecha y propiedad se toman exclusivamente de la
-  instantánea de la oferta. Un cuerpo enviado a POST no modifica esos términos.
-  La propiedad puede haberse eliminado del catálogo: su instantánea se conserva.
-- Las ofertas DEMO actuales no incluyen productos de seguros o cargos bancarios:
-  se calculan con **gracia NONE, sin balón, seguros y gastos 0**, COK igual a TEA.
-  Es un cronograma demostrativo del contrato guardado; no se presenta como una
-  TCEA regulatoria ni como una aprobación bancaria real.
-
-Precisión y conservación: TEM se calcula con raíz duodécima y cuota con anualidad
-en `BigDecimal`/DECIMAL128; se redondea a centavos mediante HALF_EVEN por período.
-La cuota final liquida exactamente 0.00. Con gracia TOTAL la suma de amortizaciones
-es préstamo más intereses capitalizados; en los otros casos coincide con el
-préstamo. El VAN usa la perspectiva del deudor: `+loanAmount` inicial y pagos
-negativos; con COK 0 es `loanAmount - sum(totalPayment)`. No se corrige su signo.
-TIR y TCEA se obtienen numéricamente con acotación adaptativa y bisección.
-
-La persistencia conserva propietario, UUID del cliente e inmueble, fecha y COK
-reales; no genera identificadores nuevos al leer ni sustituye COK por TEA.
-`V7__owned_schedules_precision.sql` amplía dinero a `NUMERIC(38,2)`, TIR a
-`NUMERIC(60,24)` y TCEA a `NUMERIC(280,24)`. Esto cubre totales acumulados por
-encima del límite original y el caso admitido de préstamo de un centavo con
-seguros/gastos máximos, sin desbordamiento y conservando VAN negativo.
-Las columnas nuevas de registros heredados permanecen nulas; no se inventan
-identidad ni COK histórico. Actualmente Hibernate actualiza el esquema; el DDL
-expreso está disponible para instalaciones con migraciones administradas.
-
-La prueba `FinanceReferenceTest` compara todas las cuotas y métricas de nueve
-vectores independientes: `src/test/resources/finance_reference.py` utiliza
-Python Decimal con 300 dígitos, TEM por `exp(ln(1+TEA)/12)` y TIR mediante factor
-de descuento, sin importar código Java. El JSON de referencia está versionado y
-Maven no necesita Python. Para regenerarlo, opcionalmente:
+Requiere Java 21, Maven 3.9.x y PostgreSQL accesible para ejecutar la aplicación normal.
+Las pruebas usan H2 y no requieren PostgreSQL ni Docker.
 
 ```bash
-python3 src/test/resources/finance_reference.py
-```
-
-Se incluyen estándar con/sin gastos, COK 0, gracia total/parcial, balón final,
-monto máximo con TEA mínima y un centavo con gastos extremos.
-`ScheduleIntegrationTest` verifica persistencia exacta, privacidad, identidades,
-fechas de fin de mes y límites del calendario, instantáneas e idempotencia
-concurrente; un fallo al asociar la oferta revierte también el cronograma.
-
----
-
-## 5. Instrucciones de Ejecución
-
-### Opción A: Despliegue con Docker Compose (Recomendada)
-
-Requiere tener Docker Desktop instalado y en ejecución:
-
-```bash
-# 1. Clonar o ubicarse en la raíz del repositorio backend
-cd credicasa-backend
-
-# 2. Levantar la base de datos PostgreSQL 16 y el microservicio
-docker-compose up --build
-```
-
-El servicio estará disponible en `http://localhost:8080`.
-
-### Opción B: Ejecución Local con Maven
-
-Requiere Java 21 y Maven (o utilizar el wrapper):
-
-```bash
-# 1. Ejecutar las pruebas unitarias y de arquitectura
-mvn test
-
-# 2. Iniciar el servicio localmente
+mvn verify
 mvn spring-boot:run
 ```
 
----
+Antes del segundo comando configure la conexión y claves mediante el entorno:
 
-## 6. Documentación Interactiva OpenAPI / Swagger UI
+| Variable | Uso actual |
+| --- | --- |
+| `SPRING_DATASOURCE_URL` | JDBC PostgreSQL; por defecto usa `DB_HOST=localhost`, `DB_PORT=5432`, `DB_NAME=credicasa_db`. |
+| `SPRING_DATASOURCE_USERNAME` / `SPRING_DATASOURCE_PASSWORD` | Credenciales de la base. La configuración de desarrollo tiene valores predeterminados; reemplazarlos en cada despliegue. |
+| `JWT_SECRET` | Clave propia UTF-8 de al menos 32 bytes; existe un fallback de desarrollo que no debe usarse para un despliegue. |
+| `JWT_EXPIRATION_MS` | Vigencia del JWT en milisegundos; predeterminado 86400000. |
+| `TWO_FACTOR_ENCRYPTION_KEY` | Base64 de 32 bytes aleatorios para AES-256-GCM; sin clave válida, las operaciones que necesitan cifrar/descifrar devuelven 503. |
+| `SERVER_PORT` | Puerto HTTP, predeterminado 8080. |
 
-Una vez iniciado el microservicio, la documentación interactiva Swagger está accesible en:
+Puede generar claves con `openssl rand -base64 32`. Conserve la clave AES entre
+reinicios: cambiarla impide descifrar los secretos TOTP existentes. No publique claves,
+contraseñas, tokens ni manifiestos del fixture de pruebas.
 
-> **URL Swagger UI:** [http://localhost:8080/swagger-ui.html](http://localhost:8080/swagger-ui.html)  
-> **Especificación OpenAPI (JSON):** [http://localhost:8080/v3/api-docs](http://localhost:8080/v3/api-docs)
+Base local: `http://localhost:8080/api/v1`. Swagger UI: `/swagger-ui.html`.
+Contrato generado: `/v3/api-docs`. `ApiContractDocumentation` describe la representación
+real de los DTO y las respuestas; `OpenApiContractTest` consulta el documento mediante
+HTTP real y exporta una copia a `target/openapi/generated.json`.
 
-Para probar endpoints protegidos desde Swagger:
-1. Registrar una cuenta en `POST /api/v1/auth/register`.
-2. Autenticarse en `POST /api/v1/auth/login` con el correo y contraseña registrados.
-3. Copiar el `token` devuelto.
-4. Hacer clic en el botón superior **Authorize** (candado) y pegar el token.
+Actualmente el esquema normal se administra con Hibernate `ddl-auto=update`. Los SQL
+`src/main/resources/db/migration/V1…V7` son DDL explícito para administración manual:
+**Flyway todavía no está integrado**. Compose monta únicamente V1 y la aplicación
+completa el esquema mediante Hibernate. Los archivos Docker existentes no se han
+validado ejecutándolos en este entorno, donde Docker no está instalado.
 
----
+## Operaciones y permisos
 
-## 7. Guía Rápida de Consumo de APIs (cURL)
+Todas las rutas siguientes usan el prefijo `/api/v1`. Solo login, registro y benchmarks
+son públicos. Las privadas requieren `Authorization: Bearer <token>`.
 
-### 1. Registrar cuenta e iniciar sesión
+| Método y ruta | Permiso / comportamiento | Éxito |
+| --- | --- | --- |
+| `POST /auth/register` | Público; crea únicamente `ROLE_CLIENT`. | 201 perfil |
+| `POST /auth/login` | Público; contraseña y OTP si está activo. | 200 token |
+| `POST /auth/logout` | Revoca exclusivamente el Bearer presentado. | 204 sin cuerpo |
+| `GET /users/me` | Perfil del principal. | 200 perfil |
+| `PUT /users/me` | Actualiza nombre, apellido y correo propios. | 200 perfil |
+| `GET /users/me/two-factor` | Estado propio, sin secreto. | 200 estado |
+| `POST /users/me/two-factor/setup` | Contraseña; genera configuración pendiente. | 200 configuración |
+| `POST /users/me/two-factor/confirm` | OTP pendiente válido. | 200 estado |
+| `POST /users/me/two-factor/disable` | Contraseña y OTP nuevo. | 200 estado |
+| `POST /properties` | CLIENT/REALTOR; propietario derivado del JWT. | 201 + Location |
+| `GET /properties` | CLIENT/REALTOR; catálogo activo con filtros. | 200 página |
+| `GET /properties/{id}` | CLIENT/REALTOR; catálogo compartido. | 200 inmueble |
+| `DELETE /properties/{id}` | Solo propietario; borrado lógico. | 204 sin cuerpo |
+| `POST /offers` | REALTOR, propiedad propia y destinatario CLIENT. | 201 + Location |
+| `GET /offers` | Solo ofertas recibidas por el principal. | 200 página |
+| `GET /offers/{offerId}` | Solo destinatario, incluso frente al emisor. | 200 oferta |
+| `POST /offers/{offerId}/schedule` | Solo destinatario; generación idempotente, sin cuerpo. | 200 cronograma |
+| `GET /offers/{offerId}/schedule` | Solo destinatario; requiere generación previa. | 200 cronograma |
+| `GET /notifications` | Solo avisos propios y contador pendiente. | 200 página |
+| `PATCH /notifications/{notificationId}/read` | Solo destinatario; lectura idempotente, sin cuerpo. | 200 aviso |
+| `POST /simulations/calculate` | CLIENT/REALTOR; guarda simulación propia. | 201 cronograma |
+| `GET /simulations/{id}` | Solo propietario; heredadas sin owner no son accesibles. | 200 cronograma |
+| `GET /banking/benchmarks` | Público; referencias simuladas en caché. | 200 lista |
+| `GET /banking/banks/{bankCode}/offer` | CLIENT/REALTOR; cotización simulada, no persistida. | 200 referencia |
 
-```bash
-curl -X POST "http://localhost:8080/api/v1/auth/register" \
-  -H "Content-Type: application/json" \
-  -d '{"firstName":"Lucía","lastName":"Pérez","email":"lucia@example.com","password":"MiClaveSegura2026!"}'
+Registro y cálculo directo no emiten `Location`. Un UUID mal formado devuelve 400.
+Un inmueble eliminado deja de aparecer y un segundo DELETE devuelve 404; cancelar en
+la UI no envía DELETE. Ofertas, avisos y cronogramas ajenos responden 404 sin revelar
+su existencia. No se expone edición PUT/PATCH de inmuebles.
+
+## Formatos y errores
+
+Importes y tasas de **catálogo, ofertas y simulaciones** se devuelven como cadenas
+exactas sin notación científica: `"9999999999999999.99"`, `"0.00000001"`, `"0.00"`.
+VAN puede ser negativo. Contadores, plazos, páginas y números de cuota siguen siendo
+enteros JSON. Las entradas decimales aceptan números o cadenas interpretables como
+BigDecimal; use cadenas para evitar pérdida de precisión en JavaScript.
+
+El DTO heredado `BankRateResponseDto` conserva `minTea`, `maxTea`, `averageTea` y
+`maxLtv` como números JSON. No confundir esa consulta simulada con `POST /offers`.
+Las fechas de cuotas y desembolso son ISO `YYYY-MM-DD`, sin conversión de zona horaria.
+
+La validación REST usa `{status,error,message,timestamp,validationErrors}`; los errores
+TOTP agregan `code`. Los filtros de seguridad pueden responder 401/403 sin un cuerpo
+JSON garantizado: el cliente debe comprobar el estado antes de interpretar el cuerpo.
+OpenAPI no promete un esquema de contenido para esos errores de filtro.
+
+| Estado | Casos relevantes |
+| --- | --- |
+| 400 | Campos, UUID o consultas inválidos; combinación financiera incoherente; `TWO_FACTOR_SETUP_EXPIRED`. |
+| 401 | Bearer ausente/expirado/revocado; credenciales incorrectas; `TWO_FACTOR_REQUIRED`, `TWO_FACTOR_INVALID` o `INVALID_CREDENTIALS` según el flujo. |
+| 403 | Rol insuficiente o intento de borrar/emitir sobre un inmueble ajeno. |
+| 404 | Recurso no disponible para el principal, eliminado o cronograma no generado. |
+| 409 | Correo ocupado/concurrencia de perfil; `TWO_FACTOR_ALREADY_ENABLED` o `TWO_FACTOR_NOT_ENABLED`. |
+| 429 | `TWO_FACTOR_LOCKED`, con `Retry-After` en segundos. |
+| 503 | `TWO_FACTOR_UNAVAILABLE`: configuración criptográfica ausente, incorrecta o secreto no descifrable. |
+
+CORS expone `Retry-After`. Los DTO privados de ofertas/avisos/cronogramas y el setup
+TOTP envían `Cache-Control: no-store`. El header `X-Response-Time-Ms` de benchmarks
+mide únicamente esa llamada y no representa un SLA.
+
+## Cuentas, perfil y sesión
+
+Registro: `{firstName,lastName,email,password}`. Nombres obligatorios de hasta 100
+caracteres, correo normalizado/único de hasta 254 y contraseña de 12–72 caracteres,
+máximo 72 bytes UTF-8. Se almacena BCrypt y no se crean usuarios de demostración.
+Perfil: `{id,firstName,lastName,email,roles}`; PUT exige los tres campos editables.
+El UUID del JWT permanece estable al cambiar el correo; los próximos logins usan el
+correo nuevo. Enviar roles en el cuerpo no concede privilegios.
+
+Login: `{email,password,otp?}` → `{token,type,email,roles,expiresIn}`; `expiresIn`
+está en milisegundos. Logout no lleva cuerpo, almacena SHA-256 del JWT y su expiración,
+y no afecta otras sesiones. La revocación persiste entre reinicios de la aplicación
+cuando se conserva la base; su limpieza elimina solo registros expirados. Un JWT nuevo
+incluye `jti` aleatorio. La comprobación posterior a logout rechaza el token, aunque
+una solicitud que ya había superado la validación puede terminar.
+
+TOTP usa HMAC-SHA1, seis dígitos y paso actual de 30 segundos, sin tolerancia para
+pasos expirados/futuros. Setup `{password}` devuelve `{secret,otpauthUri,expiresIn:600}`;
+solo se muestra ese secreto pendiente. Confirm `{otp}` activa la configuración antes
+de los diez minutos y consume el código. Disable `{password,otp}` requiere otro código
+nuevo. No se reutiliza el código de confirmación para login inmediato.
+
+Cinco fallos de OTP o contraseña de gestión bloquean las operaciones y nuevos ingresos
+durante 15 minutos. Regenerar setup no reinicia el bloqueo. El contador es persistente;
+los errores de contraseña primaria de login no forman parte de ese contador específico.
+Con 2FA activo no se emite JWT sin OTP válido; las sesiones emitidas previamente no se
+revocan automáticamente. Un 401 de gestión con `INVALID_CREDENTIALS`/`TWO_FACTOR_INVALID`
+no significa que el Bearer haya expirado; un 401 de filtro sin esos códigos sí invalida
+la sesión en la interfaz.
+
+## Catálogo, ofertas y avisos
+
+Crear inmueble: `{title,address,description?,price,currency,tags?}`. Título 120,
+dirección 250, descripción 2000; precio positivo con 16 enteros/2 decimales, PEN/USD.
+Hasta 20 etiquetas de 40 caracteres, no vacías: NFKC, minúsculas, recorte, espacios
+internos únicos, sin duplicados y ordenadas. OwnerId se deriva del principal.
+
+Buscar: `q` literal sobre título/dirección/descripción, sin distinguir mayúsculas,
+hasta 120 caracteres; `%`, `_` y barras no son comodines SQL. `tags=terraza&tags=garaje`
+exige **todas** las etiquetas. `mine=true` filtra por el principal. `page=0`, `size=20`,
+rango 1–100; orden `createdAt DESC,id DESC`. Respuesta común:
+`{items,page,size,totalElements,totalPages}`.
+
+Emitir oferta: `{recipientEmail,propertyId,bankCode,loanAmount,currency,annualInterestRate,termMonths,startDate}`.
+Banco BCP/INTERBANK, título y nombre derivados; `origin:"DEMO"` no es editable.
+Destinatario CLIENT resuelto por correo, propiedad propia activa, préstamo≤precio y
+misma moneda. TEA decimal `(0,1]` de hasta 8 decimales, plazo 1–360 y fecha segura.
+La oferta conserva `{id,title,address,price,currency}` del inmueble aunque se elimine.
+Oferta y aviso se guardan en la misma transacción; no queda uno sin el otro.
+
+La bandeja `/notifications?unreadOnly=false&page=0&size=20` agrega `unreadCount`, total
+propio sin leer independiente de la página/filtro. Aviso:
+`{id,offerId,type:"CREDIT_OFFER",origin:"DEMO",title,createdAt,readAt}`.
+Marcarlo leído conserva el primer `readAt`, incluso con concurrencia. La UI consulta
+cada 5 segundos mientras esté visible y autenticada; no hay SSE ni integración push.
+
+No hay alta pública de REALTOR. Un administrador puede asignarlo a una cuenta de
+prueba ya registrada mediante acceso autorizado a su base, por ejemplo:
+
+```sql
+-- Solo en la base de demostración administrada; sustituya el correo propio.
+UPDATE accounts SET roles = 'ROLE_REALTOR' WHERE email = 'asesor-demo@example.com';
 ```
 
-Use una contraseña propia. Después solicite el token:
+Después se inicia sesión de nuevo; no se crean contraseñas ni usuarios productivos.
 
+## Cronogramas y precisión
 
-```bash
-curl -X POST "http://localhost:8080/api/v1/auth/login" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "email": "lucia@example.com",
-    "password": "MiClaveSegura2026!"
-  }'
-```
+Cálculo directo requiere `loanAmount`, `currency` y `annualInterestRate`; admite
+`termMonths?`, `startDate?`, `propertyValue?`,
+`termYears?`, `gracePeriodType?`, `gracePeriodMonths?`, `balloonPaymentAmount?`,
+`balloonPaymentMonth?`, `lifeInsuranceRate?`, `propertyInsuranceRate?`, `monthlyAdminFee?`,
+`discountRateAnnual?`, `propertyAddress?`. `clientProfile` es heredado y su identidad
+se ignora: UUID, nombre y correo se toman de la cuenta autenticada.
 
-**Respuesta (200 OK):**
-```json
-{
-  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-  "type": "Bearer",
-  "email": "lucia@example.com",
-  "roles": ["ROLE_CLIENT"],
-  "expiresIn": 86400000
-}
-```
+- Préstamo/valor positivos 16+2 y préstamo≤valor; omitir valor utiliza el préstamo.
+- TEA decimal `(0,1]`, máximo 8 decimales; `8.5` se rechaza, `0.085` significa 8.5%.
+- Plazo 1–360 meses o 1–30 años. Si se envían ambos deben coincidir; omitirlos usa 240 meses.
+- NONE exige 0 meses; TOTAL/PARTIAL requieren 1–36 y menos que el plazo total.
+- Sin balón se omiten los campos o son 0; positivo≤préstamo, exclusivamente al vencimiento.
+- Seguros y COK `[0,1]` con 8 decimales; gastos≥0 con 16+2. Seguros/gastos omitidos usan 0;
+  COK omitido usa TEA, pero COK 0 se conserva como 0.
+- Fecha inicial 1900–9990 y última cuota con año≤9999. Fechas históricas válidas;
+  omitirla usa el día UTC actual. Dirección opcional hasta 250 caracteres.
 
----
+Respuesta: `{quotationId,currency,loanAmount,propertyValue,termMonths,estimatedMonthlyInstallment,metrics,status,schedule,createdAt}`.
+La cuota estimada es el primer pago regular, no el mes de gracia. Cada fila contiene
+fecha, saldo inicial, interés, amortización, cuota pura, seguros, gasto, total y saldo
+final. `/offers/{id}/schedule` usa exclusivamente los términos guardados de la oferta:
+**sin gracia, balón, seguros ni gastos; COK=TEA**. POST genera una sola vez con bloqueo
+y devuelve 200 también al repetir; GET recupera lo guardado. Es DEMO, no una TCEA
+regulatoria de un producto bancario real.
 
-### 2. Consultar Benchmarks del Mercado SBS (Caché Sub-100 ms)
+TEM se obtiene por raíz duodécima, cuota por anualidad BigDecimal/DECIMAL128 y redondeo
+HALF_EVEN a centavos por período. La última cuota liquida 0.00. Sin gracia total las
+amortizaciones suman el préstamo; con TOTAL incluyen intereses capitalizados.
+VAN usa `+loanAmount` inicial y pagos negativos: con COK 0 es préstamo−suma de pagos.
+TIR se obtiene por bisección adaptativa sobre flujos normalizados. Dinero persistido
+usa NUMERIC(38,2), TIR(60,24) y TCEA(280,24); se conservan owner, IDs y COK reales.
+No se inventan datos faltantes de registros heredados.
 
-```bash
-curl -X GET "http://localhost:8080/api/v1/banking/benchmarks?currency=PEN"
-```
+## Pruebas e informes
 
-*Verifique el encabezado HTTP devuelto `X-Response-Time-Ms`: en llamadas subsecuentes responderá en < 5 ms gracias a la caché `@Cacheable`.*
+`mvn verify` ejecuta JUnit, integración H2, nueve referencias financieras independientes,
+siete escenarios Gherkin y el contrato OpenAPI servido por HTTP real. No requiere
+Python, Docker, PostgreSQL ni bancos reales. Las fuentes del oráculo reproducible están
+en `src/test/resources/finance_reference.py`; regeneración opcional con Python Decimal 300.
 
----
+| Evidencia generada, ignorada por Git | Ruta |
+| --- | --- |
+| JUnit / integración / contrato | `target/surefire-reports/` |
+| Gherkin por las siete historias | `target/cucumber/index.html`, `cucumber.json`, `results.xml` |
+| JaCoCo sin umbral arbitrario | `target/site/jacoco/index.html`, `jacoco.xml` |
+| Contrato OpenAPI del test HTTP | `target/openapi/generated.json` |
 
-### 3. Simular Crédito Hipotecario (Escenario S/. 200,000 a 20 años)
+Gherkin traza US02, US03, US04, US08, US10, US11 y US14; US07 es dependencia del catálogo.
+El repositorio frontend contiene pruebas Playwright contra API real.
 
-```bash
-curl -X POST "http://localhost:8080/api/v1/simulations/calculate" \
-  -H "Authorization: Bearer <TU_TOKEN_JWT>" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "propertyValue": 250000.00,
-    "loanAmount": 200000.00,
-    "currency": "PEN",
-    "termYears": 20,
-    "annualInterestRate": 0.085,
-    "gracePeriodType": "NONE",
-    "gracePeriodMonths": 0,
-    "lifeInsuranceRate": 0.0005,
-    "propertyInsuranceRate": 0.00025,
-    "monthlyAdminFee": 10.00,
-    "startDate": "2026-11-01",
-    "propertyAddress": "Av. Dos de Mayo 1420, San Isidro, Lima",
-    "clientProfile": {
-      "documentNumber": "74839201",
-      "fullName": "Juan Carlos Pérez Valdivia",
-      "email": "juan.perez@gmail.com",
-      "monthlyIncome": 9200.00,
-      "creditScore": 790
-    }
-  }'
-```
-
-**Respuesta destacada:**
-- `loanAmount`: `200000.00`
-- `termMonths`: `240`
-- `metrics.tea`: `0.085000` (8.50%)
-- `metrics.tem`: `0.006821` (0.68% mensual)
-- `metrics.tcea`: `0.097652` (9.77% real anualizada)
-- `schedule[239].finalBalance`: `0.00` **(Liquidación exacta al centavo)**
-- `schedule[239].principalAmortization`: absorbe el saldo anterior residual.
-
----
-
-### 4. Simulación con Período de Gracia Total (6 meses)
-
-```bash
-curl -X POST "http://localhost:8080/api/v1/simulations/calculate" \
-  -H "Authorization: Bearer <TU_TOKEN_JWT>" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "propertyValue": 220000.00,
-    "loanAmount": 180000.00,
-    "currency": "PEN",
-    "termMonths": 180,
-    "annualInterestRate": 0.089,
-    "gracePeriodType": "TOTAL",
-    "gracePeriodMonths": 6,
-    "lifeInsuranceRate": 0.0005,
-    "propertyInsuranceRate": 0.00025,
-    "monthlyAdminFee": 10.00
-  }'
-```
-
----
-
-## 8. Batería de Pruebas Automatizadas
-
-El proyecto incluye dos suites de pruebas automatizadas que certifican los drivers de calidad:
-
-### 1. Pruebas Unitarias Financieras (`FrenchAmortizationEngineTest`)
-- **Escenario Mandatorio:** Crédito de S/. 200,000.00 a 20 años (240 cuotas) a 8.5% TEA.
-- **Validaciones:**
-  - Verifica que cada una de las 240 cuotas cumpla la coherencia contable del método francés.
-  - Verifica que el saldo final de la cuota 240 sea **`0.00` exacto**.
-  - Verifica que la suma total de las amortizaciones mensuales equivalga a **`200000.00` exacto**.
-  - Comprueba variantes con **Gracia Total** (capitalización de intereses), **Gracia Parcial** (pago de intereses sin amortización) y **Cuota Balón**.
-  - Comprueba que la **TCEA** resuelta mediante el solver numérico sea estrictamente superior a la TEA pactada.
-
-### 2. Pruebas de Arquitectura Hexagonal (`HexagonalArchitectureTest`)
-- Utiliza **ArchUnit 1.3.0** para auditar el árbol de clases compilado:
-  - `domainMustNotDependOnInfrastructure`: El dominio no posee referencias a clases dentro de `infrastructure`.
-  - `domainMustNotDependOnApplication`: El dominio no depende de la orquestación de aplicación.
-  - `domainMustNotDependOnInterfaces`: El dominio ignora la existencia de controladores REST o Swagger.
-  - `applicationMustNotDependOnInfrastructure`: La aplicación no conoce implementaciones concretas de base de datos o adaptadores bancarios externos.
-
----
-
-## 9. Contacto y Equipo de Desarrollo
-
-- **Startup:** FidiaCorp S.A.C.
-- **Producto:** CrediCasa Hipotecario
-- **Email:** architecture@fidiacorp.pe
-- **Licencia:** Apache License 2.0
-
-### Aceptación ejecutable y cobertura del Sprint 2
-
-`mvn verify` ejecuta las pruebas JUnit existentes y siete escenarios Gherkin en
-`src/test/resources/features/sprint2.feature`, mediante `Sprint2AcceptanceTest`
-y Cucumber 7.18.1 sobre Spring/MockMvc y H2. Las etiquetas mantienen las historias
-US02, US03, US04, US08, US10, US11 y US14; US07 aparece como dependencia del
-registro de inmuebles. No se accede a PostgreSQL ni a servicios bancarios reales.
-
-Los escenarios verifican recorridos completos: perfil persistente con validación,
-alta TOTP sin emisión prematura de JWT, logout de una sesión, eliminación exclusiva
-del propietario, oferta DEMO/notificación privada y lectura idempotente,
-cronograma persistente de oferta y filtros AND normalizados. Complementan las
-pruebas detalladas de permisos, concurrencia y referencias financieras.
-
-Resultados generados, ignorados por Git:
-
-- Surefire: `target/surefire-reports/`.
-- Cucumber: `target/cucumber/index.html`, `cucumber.json` y `results.xml`.
-- JaCoCo 0.8.12: `target/site/jacoco/index.html` y `jacoco.xml`, generados en
-  `verify`. La cobertura mide el código ejercitado y no reemplaza la aceptación;
-  no se impone un porcentaje arbitrario ni se afirma cobertura completa.
-
-### Fixture local para pruebas de navegador
-
-`BrowserFixtureServer` existe **solo en `src/test/java`**. Arranca una instancia
-HTTP real ligada a `127.0.0.1`, con puerto aleatorio, H2 en memoria y claves JWT/AES
-aleatorias. Sus argumentos internos de Spring fuerzan URL/driver/dialecto H2,
-credenciales y `create-drop`, incluso si el entorno configura PostgreSQL. No tiene
-endpoints especiales de aprovisionamiento ni de apagado. El jar de producción no
-incluye esta clase, el runner ni las dependencias de aceptación.
+`BrowserFixtureServer` vive solo en `src/test/java` y no se incluye en el jar productivo:
+H2 forzado, loopback, puerto aleatorio, claves/cuentas aleatorias y oferta DEMO. Arranque:
 
 ```bash
 mvn test-compile dependency:build-classpath -Dmdep.outputFile=target/browser-classpath.txt
@@ -800,13 +240,9 @@ java -cp "target/test-classes:target/classes:$(cat target/browser-classpath.txt)
   com.fidiacorp.credicasa.testing.BrowserFixtureServer /ruta/privada/fixture.json
 ```
 
-El archivo de destino debe ser nuevo. Tras crear datos, se publica atómicamente
-con permisos `0600`: contiene `apiBaseUrl`, `client`, `otherClient` y `realtor`
-(cada uno con `id`, `email`, `password`), `propertyId`, `offerId` y `pid`. No guarda
-tokens ni claves de cifrado. Los clientes y el asesor son exclusivamente de
-prueba; la propiedad y oferta DEMO iniciales pertenecen a esa instancia efímera.
-No publicar el manifiesto ni sus credenciales. Para finalizar, usar Ctrl-C o
-`kill -TERM <pid>`; Spring cierra H2 y el hook elimina el manifiesto. Una terminación
-forzada con SIGKILL requiere borrar manualmente el manifiesto residual. El reloj
-es real: después de confirmar un TOTP, esperar al siguiente intervalo de 30
-segundos antes de reutilizar otro código en login o desactivación.
+El destino debe ser nuevo. El manifiesto se publica atómicamente con permisos 0600:
+`apiBaseUrl`, `client`, `otherClient`, `realtor` (id/email/password), `propertyId`, `offerId`,
+`pid`. No incluye tokens ni claves AES/JWT. No hay endpoints productivos de fixture.
+Ctrl-C o SIGTERM cierra Spring/H2 y elimina el manifiesto; SIGKILL requiere eliminar el
+archivo residual manualmente. El reloj es real y hay que esperar al siguiente TOTP
+tras consumir uno. No publicar ese archivo ni sus credenciales.
