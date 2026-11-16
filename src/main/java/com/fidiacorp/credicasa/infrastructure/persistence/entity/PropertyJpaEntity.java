@@ -24,5 +24,10 @@ public class PropertyJpaEntity {
     @Column(name="tag",nullable=false,length=40) public Set<String> tags=new HashSet<>();
     @Column(name="created_at",nullable=false) public Instant createdAt;
     @Column(name="deleted_at") public Instant deletedAt;
+    @Column(name="registry_number", length=50) public String registryNumber;
+    @Column(name="registry_status", length=30) public String registryStatus = "PENDING_VERIFICATION";
+    @Column(name="registry_verified_at") public Instant registryVerifiedAt;
+    @Column(name="registry_office", length=100) public String registryOffice;
+    @Column(name="registry_notes", length=1000) public String registryNotes;
     @Version public Long version;
 }

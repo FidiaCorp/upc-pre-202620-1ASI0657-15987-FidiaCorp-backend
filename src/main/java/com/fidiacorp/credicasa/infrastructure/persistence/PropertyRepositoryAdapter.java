@@ -8,6 +8,8 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Repository;
 import jakarta.persistence.criteria.Predicate;
 import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.*;
 @Repository
 public class PropertyRepositoryAdapter implements PropertyRepositoryPort {
@@ -37,6 +39,43 @@ public class PropertyRepositoryAdapter implements PropertyRepositoryPort {
         return new PropertyPage(page.getContent().stream().map(this::map).toList(),page.getTotalElements());
     }
     public boolean softDelete(UUID id,UUID ownerId,Instant at) {return repository.softDelete(id,ownerId,at)==1;}
+
+    @Override
+    public void updateLegitimacy(UUID propertyId, String registryNumber, PropertyLegitimacyStatus status, String office, String notes, Instant verifiedAt) {
+        repository.findByIdAndDeletedAtIsNull(propertyId).ifPresent(entity -> {
+            entity.registryNumber = registryNumber;
+            entity.registryStatus = status != null ? status.name() : PropertyLegitimacyStatus.PENDING_VERIFICATION.name();
+            entity.registryOffice = office;
+            entity.registryNotes = notes;
+            entity.registryVerifiedAt = verifiedAt;
+            repository.saveAndFlush(entity);
+        });
+    }
+
+    @Override
+    public Optional<PropertyLegitimacyReport> findLegitimacyByPropertyId(UUID propertyId) {
+        return repository.findByIdAndDeletedAtIsNull(propertyId).map(entity -> {
+            PropertyLegitimacyStatus status = PropertyLegitimacyStatus.PENDING_VERIFICATION;
+            if (entity.registryStatus != null) {
+                try {
+                    status = PropertyLegitimacyStatus.valueOf(entity.registryStatus);
+                } catch (IllegalArgumentException ignored) {}
+            }
+            LocalDateTime dt = entity.registryVerifiedAt != null
+                    ? LocalDateTime.ofInstant(entity.registryVerifiedAt, ZoneId.systemDefault())
+                    : LocalDateTime.now();
+            return new PropertyLegitimacyReport(
+                    entity.id,
+                    entity.registryNumber != null ? entity.registryNumber : "",
+                    status,
+                    entity.registryOffice != null ? entity.registryOffice : "Zona Registral N° IX - Sede Lima",
+                    "Titular Registral Verificado",
+                    dt,
+                    entity.registryNotes != null ? entity.registryNotes : "Estado pendiente de verificación."
+            );
+        });
+    }
+
     private Property map(PropertyJpaEntity e) {
         return new Property(e.id,e.ownerId,e.title,e.address,e.description,e.price,e.currency,e.tags,e.createdAt);
     }

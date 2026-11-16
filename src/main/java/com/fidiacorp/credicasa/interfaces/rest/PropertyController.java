@@ -1,6 +1,8 @@
 package com.fidiacorp.credicasa.interfaces.rest;
 import com.fidiacorp.credicasa.application.dto.request.CreatePropertyRequest;
+import com.fidiacorp.credicasa.application.dto.request.VerifyRegistryRequest;
 import com.fidiacorp.credicasa.application.dto.response.*;
+import com.fidiacorp.credicasa.application.usecase.PropertyLegitimacyService;
 import com.fidiacorp.credicasa.application.usecase.PropertyService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.*;
@@ -15,7 +17,13 @@ import java.util.*;
 @PreAuthorize("hasAnyRole('CLIENT','REALTOR')")
 public class PropertyController {
     private final PropertyService service;
-    public PropertyController(PropertyService service) {this.service=service;}
+    private final PropertyLegitimacyService legitimacyService;
+
+    public PropertyController(PropertyService service, PropertyLegitimacyService legitimacyService) {
+        this.service = service;
+        this.legitimacyService = legitimacyService;
+    }
+
     @PostMapping
     public ResponseEntity<PropertyResponse> create(Principal principal,@Valid @RequestBody CreatePropertyRequest request) {
         PropertyResponse response=service.create(UUID.fromString(principal.getName()),request);
@@ -34,5 +42,19 @@ public class PropertyController {
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(Principal principal,@PathVariable UUID id) {
         service.delete(UUID.fromString(principal.getName()),id);return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/{id}/verify-registry")
+    public ResponseEntity<PropertyLegitimacyResponse> verifyRegistry(
+            @PathVariable UUID id,
+            @Valid @RequestBody VerifyRegistryRequest request) {
+        PropertyLegitimacyResponse response = legitimacyService.verifyPropertyLegitimacy(id, request);
+        return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/{id}/legitimacy")
+    public ResponseEntity<PropertyLegitimacyResponse> getLegitimacy(@PathVariable UUID id) {
+        PropertyLegitimacyResponse response = legitimacyService.getPropertyLegitimacy(id);
+        return ResponseEntity.ok(response);
     }
 }
