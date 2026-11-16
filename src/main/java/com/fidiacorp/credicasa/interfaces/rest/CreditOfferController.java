@@ -2,6 +2,7 @@ package com.fidiacorp.credicasa.interfaces.rest;
 import com.fidiacorp.credicasa.application.dto.request.CreateCreditOfferRequest;
 import com.fidiacorp.credicasa.application.dto.response.*;
 import com.fidiacorp.credicasa.application.usecase.CreditOfferService;
+import com.fidiacorp.credicasa.domain.service.ExcelScheduleExportEngine;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.*;
 import org.springframework.http.*;
@@ -15,7 +16,16 @@ import java.util.UUID;
 public class CreditOfferController {
     private final CreditOfferService service;
     private final com.fidiacorp.credicasa.application.usecase.OfferScheduleService schedules;
-    public CreditOfferController(CreditOfferService service,com.fidiacorp.credicasa.application.usecase.OfferScheduleService schedules) {this.service=service;this.schedules=schedules;}
+    private final ExcelScheduleExportEngine excelEngine;
+
+    public CreditOfferController(CreditOfferService service,
+                                com.fidiacorp.credicasa.application.usecase.OfferScheduleService schedules,
+                                ExcelScheduleExportEngine excelEngine) {
+        this.service = service;
+        this.schedules = schedules;
+        this.excelEngine = excelEngine;
+    }
+
     private UUID id(Principal p) {return UUID.fromString(p.getName());}
     @PostMapping("/{offerId}/schedule")
     public ResponseEntity<SimulationResponseDto> generateSchedule(Principal p,@PathVariable UUID offerId) {
@@ -24,6 +34,15 @@ public class CreditOfferController {
     @GetMapping("/{offerId}/schedule")
     public ResponseEntity<SimulationResponseDto> getSchedule(Principal p,@PathVariable UUID offerId) {
         return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(schedules.get(id(p),offerId));
+    }
+    @GetMapping("/{offerId}/schedule/export/xlsx")
+    public ResponseEntity<byte[]> exportScheduleExcel(Principal p, @PathVariable UUID offerId) {
+        SimulationResponseDto sim = schedules.get(id(p), offerId);
+        byte[] bytes = excelEngine.generateExcel(sim, "Cronograma Oferta CrediCasa - " + offerId);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"cronograma_oferta_" + offerId + ".xlsx\"")
+                .contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+                .body(bytes);
     }
     @PostMapping @PreAuthorize("hasRole('REALTOR')")
     public ResponseEntity<CreditOfferResponse> issue(Principal p,@Valid @RequestBody CreateCreditOfferRequest request) {

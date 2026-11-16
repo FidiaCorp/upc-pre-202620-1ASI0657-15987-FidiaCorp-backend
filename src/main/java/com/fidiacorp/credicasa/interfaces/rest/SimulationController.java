@@ -3,6 +3,7 @@ package com.fidiacorp.credicasa.interfaces.rest;
 import com.fidiacorp.credicasa.application.dto.request.SimulationRequestDto;
 import com.fidiacorp.credicasa.application.dto.response.SimulationResponseDto;
 import com.fidiacorp.credicasa.application.usecase.CalculateCreditSimulationService;
+import com.fidiacorp.credicasa.domain.service.ExcelScheduleExportEngine;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -10,7 +11,9 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -20,6 +23,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.security.Principal;
 import java.util.UUID;
 
 @RestController
@@ -29,9 +33,12 @@ import java.util.UUID;
 public class SimulationController {
 
     private final CalculateCreditSimulationService simulationService;
+    private final ExcelScheduleExportEngine excelEngine;
 
-    public SimulationController(CalculateCreditSimulationService simulationService) {
+    public SimulationController(CalculateCreditSimulationService simulationService,
+                                ExcelScheduleExportEngine excelEngine) {
         this.simulationService = simulationService;
+        this.excelEngine = excelEngine;
     }
 
     @PostMapping("/calculate")
@@ -45,8 +52,8 @@ public class SimulationController {
             @ApiResponse(responseCode = "401", description = "No autenticado"),
             @ApiResponse(responseCode = "403", description = "Acceso denegado (requiere ROLE_CLIENT o ROLE_REALTOR)")
     })
-    public ResponseEntity<SimulationResponseDto> calculateSimulation(java.security.Principal principal,@Valid @RequestBody SimulationRequestDto request) {
-        SimulationResponseDto response = simulationService.simulateAndSave(UUID.fromString(principal.getName()),request);
+    public ResponseEntity<SimulationResponseDto> calculateSimulation(Principal principal, @Valid @RequestBody SimulationRequestDto request) {
+        SimulationResponseDto response = simulationService.simulateAndSave(UUID.fromString(principal.getName()), request);
         return ResponseEntity.status(HttpStatus.CREATED).cacheControl(org.springframework.http.CacheControl.noStore()).body(response);
     }
 
@@ -58,10 +65,28 @@ public class SimulationController {
             @ApiResponse(responseCode = "200", description = "Cotización encontrada"),
             @ApiResponse(responseCode = "404", description = "Cotización no encontrada")
     })
-    public ResponseEntity<SimulationResponseDto> getSimulationById(java.security.Principal principal,
+    public ResponseEntity<SimulationResponseDto> getSimulationById(Principal principal,
             @Parameter(description = "Identificador UUID de la cotización", required = true)
             @PathVariable UUID id) {
-        SimulationResponseDto response = simulationService.getById(UUID.fromString(principal.getName()),id);
+        SimulationResponseDto response = simulationService.getById(UUID.fromString(principal.getName()), id);
         return ResponseEntity.ok().cacheControl(org.springframework.http.CacheControl.noStore()).body(response);
+    }
+
+    @GetMapping("/{id}/export/xlsx")
+    @PreAuthorize("hasAnyRole('ROLE_CLIENT', 'ROLE_REALTOR')")
+    @Operation(summary = "Descargar cronograma de pagos en formato Excel (.xlsx)",
+            description = "Genera y descarga una hoja de cálculo con las métricas financieras y el cronograma completo cuota a cuota.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Archivo Excel generado exitosamente"),
+            @ApiResponse(responseCode = "401", description = "No autenticado"),
+            @ApiResponse(responseCode = "404", description = "Cotización no encontrada")
+    })
+    public ResponseEntity<byte[]> exportSimulationExcel(Principal principal, @PathVariable UUID id) {
+        SimulationResponseDto sim = simulationService.getById(UUID.fromString(principal.getName()), id);
+        byte[] bytes = excelEngine.generateExcel(sim, "Cronograma Simulacion CrediCasa - " + id);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"cronograma_simulacion_" + id + ".xlsx\"")
+                .contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+                .body(bytes);
     }
 }
