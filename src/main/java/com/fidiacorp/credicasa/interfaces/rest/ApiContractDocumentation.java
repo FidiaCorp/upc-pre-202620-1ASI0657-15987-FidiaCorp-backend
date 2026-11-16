@@ -1,5 +1,6 @@
 package com.fidiacorp.credicasa.interfaces.rest;
 
+import com.fidiacorp.credicasa.application.dto.response.*;
 import io.swagger.v3.core.converter.ModelConverters;
 import io.swagger.v3.oas.models.*;
 import io.swagger.v3.oas.models.headers.Header;
@@ -82,11 +83,45 @@ public class ApiContractDocumentation implements OpenApiCustomizer {
                 "Público. Datos simulados en caché; no consulta oficial SBS ni garantía de latencia. El DTO heredado utiliza números JSON, no cadenas.",200,"BankRateResponseDto",true,true),
             endpoint("/banking/banks/{bankCode}/offer",PathItem.HttpMethod.GET,"Referencias DEMO","Consultar una cotización bancaria simulada",
                 "CLIENT o REALTOR; adaptadores BCP/INTERBANK simulados, sin aprobación bancaria. No crea una oferta persistida ni aviso. "
-                    +"El DTO heredado conserva tasas e importes como números JSON.",200,"BankRateResponseDto",false));
+                    +"El DTO heredado conserva tasas e importes como números JSON.",200,"BankRateResponseDto",false),
+            // Sprint 3 Microservices Endpoints
+            endpoint("/subscriptions/status",PathItem.HttpMethod.GET,"Suscripciones (US06)","Consultar estado de suscripción del usuario",
+                "Verifica si la cuenta posee suscripción Pro activa y fecha de vigencia.",200,"SubscriptionStatusResponse",false),
+            endpoint("/payments/verify",PathItem.HttpMethod.POST,"Pagos (US06)","Verificar transacción de pago y activar suscripción",
+                "Valida pasarela Culqi/tarjeta y actualiza la membresía a estado ACTIVE.",200,"PaymentVerificationResponse",false),
+            endpoint("/properties/{id}/verify-registry",PathItem.HttpMethod.POST,"Inmuebles (US09)","Verificar partida registral de inmueble con Sunarp",
+                "Audita la legitimidad registral de la partida electrónica de 8 dígitos.",200,"PropertyLegitimacyResponse",false),
+            endpoint("/properties/{id}/legitimacy",PathItem.HttpMethod.GET,"Inmuebles (US09)","Consultar certificado registral de legitimidad",
+                "Obtiene el reporte de legitimidad y sellos registrales Sunarp.",200,"PropertyLegitimacyResponse",false),
+            endpoint("/simulations/{id}/export/xlsx",PathItem.HttpMethod.GET,"Cronogramas (US12)","Descargar cronograma de pagos en archivo Excel .xlsx",
+                "Genera y descarga archivo binario OpenXML con métricas y tabla cuota a cuota.",200,null,false),
+            endpoint("/offers/{offerId}/schedule/export/xlsx",PathItem.HttpMethod.GET,"Cronogramas (US12)","Descargar cronograma de oferta en archivo Excel .xlsx",
+                "Descarga hoja de cálculo con el cronograma oficial de la oferta bancaria.",200,null,false),
+            endpoint("/ai/recommendations",PathItem.HttpMethod.POST,"Asistente IA (US15)","Recomendar inmuebles óptimos según scoring financiero y preferencias",
+                "Motor determinista que evalúa cuota admisible (35% SBS), distrito y tags.",200,"AiRecommendationResponse",false),
+            endpoint("/messages/blocks/{targetUserId}",PathItem.HttpMethod.POST,"Mensajería (US17)","Bloquear a otro usuario en la mensajería",
+                "Impide recepción y envío de mensajes privados entre ambas cuentas.",200,"UserBlockResponse",false),
+            endpoint("/messages/blocks/{targetUserId}",PathItem.HttpMethod.DELETE,"Mensajería (US17)","Desbloquear a un usuario previamente bloqueado",
+                "Restaura la posibilidad de interacción y comunicación mutua.",204,null,false),
+            new Endpoint("/messages/blocks",PathItem.HttpMethod.GET,"Mensajería (US17)","Listar usuarios bloqueados por la cuenta actual",
+                "Retorna la lista de bloqueos activos gestionados por el usuario.",200,"UserBlockResponse",false,true),
+            endpoint("/messages",PathItem.HttpMethod.POST,"Mensajería (US17)","Enviar mensaje privado en una conversación",
+                "Envía mensaje verificando que no exista bloqueo activo entre las partes.",200,"ChatMessageResponse",false),
+            endpoint("/messages/conversations/{conversationId}/export",PathItem.HttpMethod.GET,"Mensajería (US18)","Descargar historial de conversación en archivo .txt",
+                "Genera archivo descargable con la transcripción completa de la conversación.",200,null,false),
+            endpoint("/messages/conversations/{conversationId}/export/json",PathItem.HttpMethod.GET,"Mensajería (US18)","Obtener historial de conversación estructurado en JSON",
+                "Retorna los mensajes cronológicos y texto formateado de la charla.",200,"ConversationExportResponse",false));
     }
     @Override public void customise(OpenAPI api) {
         ModelConverters.getInstance().readAll(RestExceptionHandler.ErrorResponse.class).forEach(api.getComponents()::addSchemas);
         ModelConverters.getInstance().readAll(RestExceptionHandler.TwoFactorErrorResponse.class).forEach(api.getComponents()::addSchemas);
+        ModelConverters.getInstance().readAll(SubscriptionStatusResponse.class).forEach(api.getComponents()::addSchemas);
+        ModelConverters.getInstance().readAll(PaymentVerificationResponse.class).forEach(api.getComponents()::addSchemas);
+        ModelConverters.getInstance().readAll(PropertyLegitimacyResponse.class).forEach(api.getComponents()::addSchemas);
+        ModelConverters.getInstance().readAll(AiRecommendationResponse.class).forEach(api.getComponents()::addSchemas);
+        ModelConverters.getInstance().readAll(UserBlockResponse.class).forEach(api.getComponents()::addSchemas);
+        ModelConverters.getInstance().readAll(ChatMessageResponse.class).forEach(api.getComponents()::addSchemas);
+        ModelConverters.getInstance().readAll(ConversationExportResponse.class).forEach(api.getComponents()::addSchemas);
         api.setSecurity(null);
         Map<String,Tag> tags=new LinkedHashMap<>();
         for(Endpoint d:endpoints()) {
@@ -100,7 +135,7 @@ public class ApiContractDocumentation implements OpenApiCustomizer {
             Schema schema=d.schema()==null?null:ref(d.schema());if(d.array())schema=new ArraySchema().items(schema);
             responses.addApiResponse(Integer.toString(d.status()),response(d.status()==204?"Operación completada, sin cuerpo.":"Operación completada.",schema));
             if(d.status()==201 && Set.of("/properties","/offers").contains(d.path()))responses.get("201").addHeaderObject("Location",new Header().schema(new StringSchema()).description("URI del recurso creado."));
-            if((d.method()!=PathItem.HttpMethod.GET && !d.path().equals("/auth/logout")) || d.path().contains("{") || d.path().startsWith("/banking") || d.path().equals("/properties") || d.path().equals("/offers") || d.path().equals("/notifications"))
+            if((d.method()!=PathItem.HttpMethod.GET && !d.path().equals("/auth/logout") && !d.path().startsWith("/messages/blocks")) || d.path().contains("{") || d.path().startsWith("/banking") || d.path().equals("/properties") || d.path().equals("/offers") || d.path().equals("/notifications"))
                 responses.addApiResponse("400",response("Datos o parámetros inválidos; validationErrors puede identificar campos.",ref("ErrorResponse")));
             if(!d.anonymous()) {
                 responses.addApiResponse("401",response(SECURITY_FAILURE,null));

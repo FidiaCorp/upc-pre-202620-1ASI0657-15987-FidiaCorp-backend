@@ -61,7 +61,7 @@ class OpenApiContractTest {
                 else assertThat(op.path("security").get(0).has("BearerAuth")).as(key).isTrue();
             }
         }
-        assertThat(operations).isEqualTo(24);assertThat(doc.path("security").isMissingNode() || doc.path("security").isEmpty()).isTrue();
+        assertThat(operations).isEqualTo(37);assertThat(doc.path("security").isMissingNode() || doc.path("security").isEmpty()).isTrue();
         assertThat(doc.path("info").has("contact")).isFalse();assertThat(doc.path("info").has("license")).isFalse();
         assertThat(doc.path("info").path("description").asText()).contains("DEMO").contains("simulados").doesNotContain("sub-100");
     }
