@@ -12,18 +12,12 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.Setter;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
 
 @Entity
 @Table(name = "installments")
-@Getter
-@Setter
-@NoArgsConstructor
 public class InstallmentJpaEntity {
 
     @Id
@@ -70,4 +64,48 @@ public class InstallmentJpaEntity {
     @Enumerated(EnumType.STRING)
     @Column(name = "grace_type", length = 20, nullable = false)
     private GracePeriodType graceType;
+
+    public InstallmentJpaEntity() {}
+
+    public Long getId() { return id; }
+    public void setId(Long id) { this.id = id; }
+
+    public QuotationJpaEntity getQuotation() { return quotation; }
+    public void setQuotation(QuotationJpaEntity quotation) { this.quotation = quotation; }
+
+    public int getInstallmentNumber() { return installmentNumber; }
+    public void setInstallmentNumber(int installmentNumber) { this.installmentNumber = installmentNumber; }
+
+    public LocalDate getDueDate() { return dueDate; }
+    public void setDueDate(LocalDate dueDate) { this.dueDate = dueDate; }
+
+    public BigDecimal getInitialBalance() { return initialBalance; }
+    public void setInitialBalance(BigDecimal initialBalance) { this.initialBalance = initialBalance; }
+
+    public BigDecimal getInterest() { return interest; }
+    public void setInterest(BigDecimal interest) { this.interest = interest; }
+
+    public BigDecimal getPrincipalAmortization() { return principalAmortization; }
+    public void setPrincipalAmortization(BigDecimal principalAmortization) { this.principalAmortization = principalAmortization; }
+
+    public BigDecimal getInstallmentAmount() { return installmentAmount; }
+    public void setInstallmentAmount(BigDecimal installmentAmount) { this.installmentAmount = installmentAmount; }
+
+    public BigDecimal getLifeInsurance() { return lifeInsurance; }
+    public void setLifeInsurance(BigDecimal lifeInsurance) { this.lifeInsurance = lifeInsurance; }
+
+    public BigDecimal getPropertyInsurance() { return propertyInsurance; }
+    public void setPropertyInsurance(BigDecimal propertyInsurance) { this.propertyInsurance = propertyInsurance; }
+
+    public BigDecimal getAdminFee() { return adminFee; }
+    public void setAdminFee(BigDecimal adminFee) { this.adminFee = adminFee; }
+
+    public BigDecimal getTotalPayment() { return totalPayment; }
+    public void setTotalPayment(BigDecimal totalPayment) { this.totalPayment = totalPayment; }
+
+    public BigDecimal getFinalBalance() { return finalBalance; }
+    public void setFinalBalance(BigDecimal finalBalance) { this.finalBalance = finalBalance; }
+
+    public GracePeriodType getGraceType() { return graceType; }
+    public void setGraceType(GracePeriodType graceType) { this.graceType = graceType; }
 }

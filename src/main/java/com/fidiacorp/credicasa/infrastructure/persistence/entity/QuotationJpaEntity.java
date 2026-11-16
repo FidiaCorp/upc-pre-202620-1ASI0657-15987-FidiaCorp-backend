@@ -12,9 +12,6 @@ import jakarta.persistence.Id;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.OrderBy;
 import jakarta.persistence.Table;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.Setter;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -25,9 +22,6 @@ import java.util.UUID;
 
 @Entity
 @Table(name = "quotations")
-@Getter
-@Setter
-@NoArgsConstructor
 public class QuotationJpaEntity {
 
     @Id
@@ -38,7 +32,6 @@ public class QuotationJpaEntity {
     @Column(name="property_id") private UUID propertyId;
     @Column(name="client_id") private UUID clientId;
     @Column(name="discount_rate_used",precision=38,scale=24) private BigDecimal discountRateUsed;
-
 
     @Column(name = "loan_amount", precision = 38, scale = 2, nullable = false)
     private BigDecimal loanAmount;
@@ -128,8 +121,106 @@ public class QuotationJpaEntity {
     @OneToMany(mappedBy = "quotation", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<InstallmentJpaEntity> installments = new ArrayList<>();
 
+    public QuotationJpaEntity() {}
+
     public void addInstallment(InstallmentJpaEntity installment) {
         installments.add(installment);
         installment.setQuotation(this);
     }
+
+    public UUID getId() { return id; }
+    public void setId(UUID id) { this.id = id; }
+
+    public UUID getOwnerId() { return ownerId; }
+    public void setOwnerId(UUID ownerId) { this.ownerId = ownerId; }
+
+    public UUID getPropertyId() { return propertyId; }
+    public void setPropertyId(UUID propertyId) { this.propertyId = propertyId; }
+
+    public UUID getClientId() { return clientId; }
+    public void setClientId(UUID clientId) { this.clientId = clientId; }
+
+    public BigDecimal getDiscountRateUsed() { return discountRateUsed; }
+    public void setDiscountRateUsed(BigDecimal discountRateUsed) { this.discountRateUsed = discountRateUsed; }
+
+    public BigDecimal getLoanAmount() { return loanAmount; }
+    public void setLoanAmount(BigDecimal loanAmount) { this.loanAmount = loanAmount; }
+
+    public Currency getCurrency() { return currency; }
+    public void setCurrency(Currency currency) { this.currency = currency; }
+
+    public int getTermMonths() { return termMonths; }
+    public void setTermMonths(int termMonths) { this.termMonths = termMonths; }
+
+    public BigDecimal getAnnualInterestRate() { return annualInterestRate; }
+    public void setAnnualInterestRate(BigDecimal annualInterestRate) { this.annualInterestRate = annualInterestRate; }
+
+    public GracePeriodType getGracePeriodType() { return gracePeriodType; }
+    public void setGracePeriodType(GracePeriodType gracePeriodType) { this.gracePeriodType = gracePeriodType; }
+
+    public int getGracePeriodMonths() { return gracePeriodMonths; }
+    public void setGracePeriodMonths(int gracePeriodMonths) { this.gracePeriodMonths = gracePeriodMonths; }
+
+    public BigDecimal getBalloonAmount() { return balloonAmount; }
+    public void setBalloonAmount(BigDecimal balloonAmount) { this.balloonAmount = balloonAmount; }
+
+    public Integer getBalloonMonth() { return balloonMonth; }
+    public void setBalloonMonth(Integer balloonMonth) { this.balloonMonth = balloonMonth; }
+
+    public BigDecimal getLifeInsuranceRate() { return lifeInsuranceRate; }
+    public void setLifeInsuranceRate(BigDecimal lifeInsuranceRate) { this.lifeInsuranceRate = lifeInsuranceRate; }
+
+    public BigDecimal getPropertyInsuranceRate() { return propertyInsuranceRate; }
+    public void setPropertyInsuranceRate(BigDecimal propertyInsuranceRate) { this.propertyInsuranceRate = propertyInsuranceRate; }
+
+    public BigDecimal getPropertyValue() { return propertyValue; }
+    public void setPropertyValue(BigDecimal propertyValue) { this.propertyValue = propertyValue; }
+
+    public BigDecimal getMonthlyAdminFee() { return monthlyAdminFee; }
+    public void setMonthlyAdminFee(BigDecimal monthlyAdminFee) { this.monthlyAdminFee = monthlyAdminFee; }
+
+    public LocalDate getStartDate() { return startDate; }
+    public void setStartDate(LocalDate startDate) { this.startDate = startDate; }
+
+    public BigDecimal getTea() { return tea; }
+    public void setTea(BigDecimal tea) { this.tea = tea; }
+
+    public BigDecimal getTem() { return tem; }
+    public void setTem(BigDecimal tem) { this.tem = tem; }
+
+    public BigDecimal getMonthlyTir() { return monthlyTir; }
+    public void setMonthlyTir(BigDecimal monthlyTir) { this.monthlyTir = monthlyTir; }
+
+    public BigDecimal getTcea() { return tcea; }
+    public void setTcea(BigDecimal tcea) { this.tcea = tcea; }
+
+    public BigDecimal getVan() { return van; }
+    public void setVan(BigDecimal van) { this.van = van; }
+
+    public BigDecimal getTotalInterest() { return totalInterest; }
+    public void setTotalInterest(BigDecimal totalInterest) { this.totalInterest = totalInterest; }
+
+    public BigDecimal getTotalCost() { return totalCost; }
+    public void setTotalCost(BigDecimal totalCost) { this.totalCost = totalCost; }
+
+    public String getClientDoc() { return clientDoc; }
+    public void setClientDoc(String clientDoc) { this.clientDoc = clientDoc; }
+
+    public String getClientName() { return clientName; }
+    public void setClientName(String clientName) { this.clientName = clientName; }
+
+    public String getClientEmail() { return clientEmail; }
+    public void setClientEmail(String clientEmail) { this.clientEmail = clientEmail; }
+
+    public String getPropertyAddress() { return propertyAddress; }
+    public void setPropertyAddress(String propertyAddress) { this.propertyAddress = propertyAddress; }
+
+    public QuotationStatus getStatus() { return status; }
+    public void setStatus(QuotationStatus status) { this.status = status; }
+
+    public LocalDateTime getCreatedAt() { return createdAt; }
+    public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
+
+    public List<InstallmentJpaEntity> getInstallments() { return installments; }
+    public void setInstallments(List<InstallmentJpaEntity> installments) { this.installments = installments; }
 }
