@@ -40,3 +40,7 @@ Thumbs.db
 .env
 .env.*
 !.env.example
+
+# Artefactos locales de los experimentos (contienen tokens de la sesión de prueba)
+experiments/qa01-k6/.jwt.tmp
+experiments/qa03-security/qa03-env.json
