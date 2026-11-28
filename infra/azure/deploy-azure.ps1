@@ -88,3 +88,7 @@ Write-Host "Frontend SWA URL  : $($outputs.frontendUrl.value)"
 Write-Host "PostgreSQL FQDN   : $($outputs.postgresFqdn.value)"
 Write-Host "ACR               : $($outputs.acrLoginServer.value)"
 Write-Host "Key Vault         : $($outputs.keyVaultName.value)"
+$swaName = az staticwebapp list --resource-group $ResourceGroup --query "[0].name" -o tsv
+Write-Host "`nFrontend (desde FidiaCorp-FrontEnd, tras pnpm build):" -ForegroundColor Cyan
+Write-Host "  `$token = az staticwebapp secrets list --resource-group $ResourceGroup --name $swaName --query properties.apiKey -o tsv"
+Write-Host "  npx @azure/static-web-apps-cli deploy ./dist --deployment-token `$token --env production"
