@@ -2,18 +2,20 @@
 
 ## Servicios Azure Seleccionados y Presupuesto Académico (Azure for Students — US\$ 100 gratis)
 
-| Capa | Servicio Microsoft Azure | Configuración / SKU | Rol en CrediCasa | Costo Estimado Mensual |
+| Capa | Servicio Microsoft Azure | Configuración / SKU | Rol en CrediCasa | Costo Estimado Mensual (reposo – activo) |
 |---|---|---|---|---:|
 | **Frontend SPA** | **Azure Static Web Apps** | Free Tier (`TLS 1.3`, CDN global) | Aloja la SPA Vue 3.5 + SPA fallback | US\$ 0.00 |
-| **Edge / Gateway** | **Azure Container Apps** (`api-gateway`) | `0.5 vCPU / 1 GiB`, Ingress HTTPS externo | Único punto de entrada `/api/v1/**`, CORS limitado al hostname exacto de la Static Web App, rate limit, Swagger agregado | ~US\$ 6.00 |
-| **5 Microservicios** | **Azure Container Apps** (5 apps internas) | `0.5 vCPU / 1 GiB` c/u, Ingress interno, probes Startup/Liveness/Readiness | `identity-subscription`, `property-catalog`, `mortgage-pricing`, `quotation-deal`, `communication-notification` | ~US\$ 22.00 |
+| **Edge / Gateway** | **Azure Container Apps** (`api-gateway`) | `0.5 vCPU / 1 GiB`, Ingress HTTPS externo | Único punto de entrada `/api/v1/**`, CORS limitado al hostname exacto de la Static Web App, rate limit, Swagger agregado | ~US\$ 11.83 – 39.42 |
+| **5 Microservicios** | **Azure Container Apps** (5 apps internas) | `0.5 vCPU / 1 GiB` c/u, Ingress interno, probes Startup/Liveness/Readiness | `identity-subscription`, `property-catalog`, `mortgage-pricing`, `quotation-deal`, `communication-notification` | ~US\$ 59.13 – 197.10 |
 | **Base de Datos (PA-05)** | **Azure Database for PostgreSQL Flexible Server** | `Standard_B1ms` (Burstable, 32 GB, SSL) | 5 bases lógicas aisladas (`identity_db`, `property_db`, `pricing_db`, `quotation_db`, `communication_db`) | US\$ 0.00 (12 meses gratis Students) / ~US\$ 12.40 |
-| **Mensajería Asíncrona** | **RabbitMQ** (Container App interna TCP :5672) | `0.25 vCPU / 0.5 GiB` | Broker AMQP para eventos Outbox (`credit.offer.issued.v1`) + DLQ | ~US\$ 3.00 |
+| **Mensajería Asíncrona** | **RabbitMQ** (Container App interna TCP :5672) | `0.25 vCPU / 0.5 GiB` | Broker AMQP para eventos Outbox (`credit.offer.issued.v1`) + DLQ | ~US\$ 5.91 – 19.71 |
 | **Registro Imágenes** | **Azure Container Registry (ACR)** | Basic | Almacena las 6 imágenes Docker multi-stage | ~US\$ 5.00 |
 | **Red** | **Azure Virtual Network** | `10.40.0.0/16`, subred `aca-infra` `/23` delegada a `Microsoft.App/environments` | Entorno de Container Apps con VNet propia (requisito del ingreso TCP de RabbitMQ) | US\$ 0.00 |
 | **Secretos** | **Azure Key Vault** | Standard (RBAC + Soft Delete) | Aprovisionado; en esta versión los secretos se inyectan como secretos de Container Apps (parámetros `@secure()`) y aún no se leen desde Key Vault | < US\$ 0.10 |
 | **Observabilidad** | **Azure Monitor + Log Analytics** | PerGB2018 (5 GB/mes gratis) | Logs JSON correlacionados por `X-Correlation-Id` y alertas | US\$ 0.00 |
-| **TOTAL ESTIMADO** | — | — | **Cubierto >2.5 meses con Azure for Students (US\$ 100 gratis)** | **~US\$ 36.10 / mes** |
+| **TOTAL ESTIMADO** | — | — | **Con el crédito de Azure for Students (US\$ 100): entre 12 y 37 días** | **~US\$ 80 – 256 / mes** |
+
+Estimación propia, no una factura: tarifas de referencia de pago por uso del plan Consumption (vCPU activo US\$ 0.000024/s, vCPU en reposo US\$ 0.000003/s, memoria US\$ 0.000003/GiB·s), 730 h al mes y una réplica mínima por aplicación; el total descuenta la cuota gratuita mensual de 180,000 vCPU·s y 360,000 GiB·s. Una réplica se factura como activa cuando supera 0.01 vCPU o recibe más de 1,000 bytes/s, lo habitual en una JVM con health probes, así que el extremo alto es el más probable. Confírmalo con la calculadora de precios de Azure. Recomendación: desplegar cerca de la demostración, capturar las evidencias y eliminar el grupo de recursos (`az group delete --name <grupo> --yes`).
 
 ## Pasos de Despliegue Reproducible (1 Comando)
 1. Activa tu suscripción gratuita con correo institucional `@upc.edu.pe` en `https://azure.microsoft.com/free/students/`.
