@@ -41,7 +41,7 @@ app:
       connect-timeout-ms: 500
       read-timeout-ms: 1000
 
-# QA-02 (ASR-AVAIL): parámetros exigidos por el handoff para el proveedor bancario externo.
+# QA-02 (ASR-AVAIL): parámetros definidos para el escenario QA-02 para el proveedor bancario externo.
 resilience4j:
   circuitbreaker:
     instances:

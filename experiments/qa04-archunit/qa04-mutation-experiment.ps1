@@ -6,7 +6,7 @@
   4) Revierte el archivo limpiamente y re-verifica que vuelve a verde (0 cambios persistentes).
 #>
 $ErrorActionPreference = 'Stop'
-$backend = 'C:\Users\andru\.gemini\antigravity\scratch\credicasa-workspace\upc-pre-202620-1ASI0657-15987-FidiaCorp-backend'
+$backend = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $ide = 'C:\Program Files\JetBrains\IntelliJ IDEA 2026.1.3'
 $mvn = Join-Path $ide 'plugins\maven\lib\maven3\bin\mvn.cmd'
 $env:JAVA_HOME = Join-Path $ide 'jbr'
