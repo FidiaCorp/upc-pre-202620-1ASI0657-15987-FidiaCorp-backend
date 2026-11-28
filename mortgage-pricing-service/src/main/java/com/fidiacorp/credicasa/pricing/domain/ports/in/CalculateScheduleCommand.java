@@ -1,0 +1,36 @@
+package com.fidiacorp.credicasa.pricing.domain.ports.in;
+import com.fidiacorp.credicasa.shared.money.Currency;
+
+import com.fidiacorp.credicasa.pricing.domain.model.BalloonPayment;
+import com.fidiacorp.credicasa.pricing.domain.model.ClientProfile;
+import com.fidiacorp.credicasa.pricing.domain.model.GracePeriod;
+import com.fidiacorp.credicasa.pricing.domain.model.PropertySnapshot;
+
+import java.math.BigDecimal;
+import java.time.LocalDate;
+
+public record CalculateScheduleCommand(
+        BigDecimal loanAmount,
+        Currency currency,
+        int termMonths,
+        BigDecimal annualInterestRate,
+        GracePeriod gracePeriod,
+        BalloonPayment balloonPayment,
+        BigDecimal lifeInsuranceRate,
+        BigDecimal propertyInsuranceRate,
+        BigDecimal propertyValue,
+        BigDecimal monthlyAdminFee,
+        LocalDate startDate,
+        ClientProfile clientProfile,
+        PropertySnapshot propertySnapshot,
+        BigDecimal discountRateAnnual,
+        java.util.UUID ownerId
+) {
+    public CalculateScheduleCommand(BigDecimal loanAmount,Currency currency,int termMonths,BigDecimal annualInterestRate,
+        GracePeriod gracePeriod,BalloonPayment balloonPayment,BigDecimal lifeInsuranceRate,BigDecimal propertyInsuranceRate,
+        BigDecimal propertyValue,BigDecimal monthlyAdminFee,LocalDate startDate,ClientProfile clientProfile,
+        PropertySnapshot propertySnapshot,BigDecimal discountRateAnnual) {
+        this(loanAmount,currency,termMonths,annualInterestRate,gracePeriod,balloonPayment,lifeInsuranceRate,
+            propertyInsuranceRate,propertyValue,monthlyAdminFee,startDate,clientProfile,propertySnapshot,discountRateAnnual,null);
+    }
+}

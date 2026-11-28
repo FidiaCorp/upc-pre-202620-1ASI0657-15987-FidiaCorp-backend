@@ -1,0 +1,78 @@
+{
+  "name": "bank-rates-pen-ok",
+  "scenarioName": "bank-outage",
+  "requiredScenarioState": "Started",
+  "priority": 5,
+  "request": {
+    "method": "GET",
+    "urlPath": "/bank-rates/benchmarks",
+    "queryParameters": {
+      "currency": {
+        "equalTo": "PEN"
+      }
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "jsonBody": {
+      "provider": "external-bank-mock (WireMock)",
+      "asOfDate": "2026-11-20",
+      "currency": "PEN",
+      "rates": [
+        {
+          "bankCode": "BCP",
+          "bankName": "Banco de Crédito del Perú (BCP)",
+          "minTea": 0.079,
+          "maxTea": 0.105,
+          "averageTea": 0.0871,
+          "productName": "Crédito Hipotecario",
+          "maxTermMonths": 300,
+          "maxLtv": 0.9
+        },
+        {
+          "bankCode": "INTERBANK",
+          "bankName": "Interbank",
+          "minTea": 0.078,
+          "maxTea": 0.104,
+          "averageTea": 0.0859,
+          "productName": "Crédito Hipotecario",
+          "maxTermMonths": 300,
+          "maxLtv": 0.9
+        },
+        {
+          "bankCode": "BBVA",
+          "bankName": "BBVA Perú",
+          "minTea": 0.08,
+          "maxTea": 0.106,
+          "averageTea": 0.088,
+          "productName": "Crédito Hipotecario",
+          "maxTermMonths": 300,
+          "maxLtv": 0.9
+        },
+        {
+          "bankCode": "SCOTIABANK",
+          "bankName": "Scotiabank Perú",
+          "minTea": 0.081,
+          "maxTea": 0.108,
+          "averageTea": 0.0899,
+          "productName": "Crédito Hipotecario",
+          "maxTermMonths": 300,
+          "maxLtv": 0.9
+        },
+        {
+          "bankCode": "BANBIF",
+          "bankName": "BanBif",
+          "minTea": 0.0825,
+          "maxTea": 0.11,
+          "averageTea": 0.0912,
+          "productName": "Crédito Hipotecario",
+          "maxTermMonths": 300,
+          "maxLtv": 0.9
+        }
+      ]
+    }
+  }
+}

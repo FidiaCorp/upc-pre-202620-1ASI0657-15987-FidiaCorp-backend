@@ -1,8 +1,12 @@
 .git
 .gitignore
-target
+.github
+**/target
 .env
 .env.*
 !.env.example
 *.log
-.codex-tools
+.idea
+*.iml
+docs
+docker-compose.yml

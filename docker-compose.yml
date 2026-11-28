@@ -1,32 +1,214 @@
+# CrediCasa — stack completo de microservicios (Etapa 2). Desde la raíz de FidiaCorp-backend:
+#   docker compose up --build -d   &&   docker compose ps   (todos los servicios deben quedar "Up (healthy)")
+# FrontEnd: http://localhost (Nginx → api-gateway) · API: http://localhost:8080/api/v1 · Swagger: http://localhost:8080/swagger-ui.html
+# Los secretos tienen valores SOLO para desarrollo local; sobrescríbalos con un archivo .env (ver .env.example).
+name: credicasa
+
+x-service-env: &service-env
+  JWT_SECRET: ${JWT_SECRET:-local-dev-only-jwt-signing-key-change-me-0123456789abcdef}
+  INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:-local-dev-only-internal-service-token-change-me}
+  SPRING_FLYWAY_ENABLED: "true"
+
+x-healthcheck: &java-healthcheck
+  interval: 10s
+  timeout: 3s
+  start_period: 90s
+  retries: 18
+
 services:
   postgres:
     image: postgres:16-alpine
-    restart: unless-stopped
     environment:
-      POSTGRES_DB: ${DB_NAME:-credicasa_db}
-      POSTGRES_USER: ${DB_USER:-credicasa}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres_local_dev}
+      POSTGRES_DB: postgres
     volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
-      interval: 5s
-      timeout: 5s
-      retries: 10
-  credicasa-backend:
-    build: .
-    restart: unless-stopped
+      - postgres-data:/var/lib/postgresql/data
+      - ./docker/postgres/init-databases.sql:/docker-entrypoint-initdb.d/01-init-databases.sql:ro
     ports:
-      - "127.0.0.1:${BACKEND_PORT:-8080}:8080"
+      - "127.0.0.1:${POSTGRES_PORT:-5433}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d communication_db"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
     environment:
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${DB_NAME:-credicasa_db}
-      SPRING_DATASOURCE_USERNAME: ${DB_USER:-credicasa}
-      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
-      JWT_SECRET: ${JWT_SECRET:?Set a random JWT_SECRET of at least 32 bytes}
-      TWO_FACTOR_ENCRYPTION_KEY: ${TWO_FACTOR_ENCRYPTION_KEY:?Set a Base64 encoded random 32-byte key}
-      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS-http://localhost:5173,http://127.0.0.1:5173}
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USERNAME:-credicasa}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-credicasa_local_dev}
+    ports:
+      - "127.0.0.1:5672:5672"
+      - "127.0.0.1:15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 18
+
+  external-bank-mock:
+    image: wiremock/wiremock:3.9.1
+    command: ["--port", "8080", "--global-response-templating", "--disable-banner"]
+    volumes:
+      - ./docker/wiremock:/home/wiremock:ro
+    ports:
+      - "8090:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "http://localhost:8080/__admin/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  identity-subscription-service:
+    build:
+      context: .
+      dockerfile: identity-subscription-service/Dockerfile
+    environment:
+      <<: *service-env
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/identity_db
+      SPRING_DATASOURCE_USERNAME: identity_user
+      SPRING_DATASOURCE_PASSWORD: identity_local_dev
+      TWO_FACTOR_ENCRYPTION_KEY: ${TWO_FACTOR_ENCRYPTION_KEY:-bG9jYWwtZGV2LW9ubHktMmZhLWtleS0zMi1ieXRlcyE=}
+      PAYMENT_SANDBOX_SECRET: ${PAYMENT_SANDBOX_SECRET:-local-dev-only-payment-sandbox-signing-key-change-me}
+      # Vacío = fixture E2E deshabilitado. quality-gate-2.ps1 lo define solo para la corrida de aceptación.
+      APP_E2E_FIXTURE_TOKEN: ${E2E_FIXTURE_TOKEN:-}
+    ports:
+      - "127.0.0.1:8081:8081"
     depends_on:
-      postgres:
-        condition: service_healthy
+      postgres: { condition: service_healthy }
+    healthcheck:
+      <<: *java-healthcheck
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8081/actuator/health | grep -q UP"]
+
+  property-catalog-service:
+    build:
+      context: .
+      dockerfile: property-catalog-service/Dockerfile
+    environment:
+      <<: *service-env
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/property_db
+      SPRING_DATASOURCE_USERNAME: property_user
+      SPRING_DATASOURCE_PASSWORD: property_local_dev
+    ports:
+      - "127.0.0.1:8082:8082"
+    depends_on:
+      postgres: { condition: service_healthy }
+    healthcheck:
+      <<: *java-healthcheck
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8082/actuator/health | grep -q UP"]
+
+  mortgage-pricing-service:
+    build:
+      context: .
+      dockerfile: mortgage-pricing-service/Dockerfile
+    environment:
+      <<: *service-env
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/pricing_db
+      SPRING_DATASOURCE_USERNAME: pricing_user
+      SPRING_DATASOURCE_PASSWORD: pricing_local_dev
+      BANKING_EXTERNAL_ENABLED: "true"
+      BANKING_EXTERNAL_BASE_URL: http://external-bank-mock:8080
+    ports:
+      - "127.0.0.1:8083:8083"
+    depends_on:
+      postgres: { condition: service_healthy }
+      external-bank-mock: { condition: service_healthy }
+    healthcheck:
+      <<: *java-healthcheck
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8083/actuator/health | grep -q UP"]
+
+  quotation-deal-service:
+    build:
+      context: .
+      dockerfile: quotation-deal-service/Dockerfile
+    environment:
+      <<: *service-env
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/quotation_db
+      SPRING_DATASOURCE_USERNAME: quotation_user
+      SPRING_DATASOURCE_PASSWORD: quotation_local_dev
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_USERNAME: ${RABBITMQ_USERNAME:-credicasa}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-credicasa_local_dev}
+      IDENTITY_SERVICE_URL: http://identity-subscription-service:8081
+      CATALOG_SERVICE_URL: http://property-catalog-service:8082
+      PRICING_SERVICE_URL: http://mortgage-pricing-service:8083
+    ports:
+      - "127.0.0.1:8084:8084"
+    depends_on:
+      postgres: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+      identity-subscription-service: { condition: service_healthy }
+      property-catalog-service: { condition: service_healthy }
+      mortgage-pricing-service: { condition: service_healthy }
+    healthcheck:
+      <<: *java-healthcheck
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8084/actuator/health | grep -q UP"]
+
+  communication-notification-service:
+    build:
+      context: .
+      dockerfile: communication-notification-service/Dockerfile
+    environment:
+      <<: *service-env
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/communication_db
+      SPRING_DATASOURCE_USERNAME: communication_user
+      SPRING_DATASOURCE_PASSWORD: communication_local_dev
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_USERNAME: ${RABBITMQ_USERNAME:-credicasa}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-credicasa_local_dev}
+      IDENTITY_SERVICE_URL: http://identity-subscription-service:8081
+      CATALOG_SERVICE_URL: http://property-catalog-service:8082
+    ports:
+      - "127.0.0.1:8085:8085"
+    depends_on:
+      postgres: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+      identity-subscription-service: { condition: service_healthy }
+      property-catalog-service: { condition: service_healthy }
+    healthcheck:
+      <<: *java-healthcheck
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8085/actuator/health | grep -q UP"]
+
+  api-gateway:
+    build:
+      context: .
+      dockerfile: api-gateway/Dockerfile
+    environment:
+      JWT_SECRET: ${JWT_SECRET:-local-dev-only-jwt-signing-key-change-me-0123456789abcdef}
+      INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:-local-dev-only-internal-service-token-change-me}
+      IDENTITY_SERVICE_URL: http://identity-subscription-service:8081
+      CATALOG_SERVICE_URL: http://property-catalog-service:8082
+      PRICING_SERVICE_URL: http://mortgage-pricing-service:8083
+      QUOTATION_SERVICE_URL: http://quotation-deal-service:8084
+      COMMUNICATION_SERVICE_URL: http://communication-notification-service:8085
+      CORS_ALLOWED_ORIGIN_PATTERNS: ${CORS_ALLOWED_ORIGIN_PATTERNS:-http://localhost:[*],http://127.0.0.1:[*]}
+      AUTH_RATE_LIMIT_PER_MINUTE: ${AUTH_RATE_LIMIT_PER_MINUTE:-120}
+    ports:
+      - "${GATEWAY_PORT:-8080}:8080"
+    depends_on:
+      identity-subscription-service: { condition: service_healthy }
+      property-catalog-service: { condition: service_healthy }
+      mortgage-pricing-service: { condition: service_healthy }
+      quotation-deal-service: { condition: service_healthy }
+      communication-notification-service: { condition: service_healthy }
+    healthcheck:
+      <<: *java-healthcheck
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/actuator/health | grep -q UP"]
+
+  credicasa-frontend:
+    build:
+      context: ${FRONTEND_CONTEXT:-../upc-pre-202620-1ASI0657-15987-FidiaCorp-FrontEnd}
+    ports:
+      - "${FRONTEND_PORT:-80}:80"
+    depends_on:
+      api-gateway: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/ >/dev/null && wget -qO- http://127.0.0.1/api/v1/banking/benchmarks | grep -q bankCode"]
+      interval: 10s
+      timeout: 5s
+      start_period: 20s
+      retries: 12
+
 volumes:
-  postgres_data:
+  postgres-data:

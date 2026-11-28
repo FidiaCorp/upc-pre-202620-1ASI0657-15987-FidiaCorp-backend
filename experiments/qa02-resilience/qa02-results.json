@@ -1,0 +1,95 @@
+{
+  "executedAt": "2026-11-25T05:46:24.990Z",
+  "partA_circuitBreaker": {
+    "initial": {
+      "state": "CLOSED",
+      "dataSource": "LIVE",
+      "ms": 7.6
+    },
+    "outage": {
+      "state": "OPEN",
+      "failureRate": "60.0%",
+      "failedCalls": 6,
+      "fallbackP50Ms": 4.5,
+      "fallbackP95Ms": 5.3,
+      "fallbackActive": true,
+      "asOfDate": "2026-11-25",
+      "coreSimulationStatus": 201,
+      "coreSimulationMs": 76.8
+    },
+    "recovery": {
+      "recovered": true,
+      "transitions": [
+        "OPEN",
+        "HALF_OPEN",
+        "CLOSED"
+      ]
+    }
+  },
+  "partB_rabbitmqOutboxResilience": {
+    "offerDuringConsumerDown": {
+      "status": 201,
+      "offerId": "ed7d78c1-ee03-4d60-afcd-4f610a419fad",
+      "ms": 125
+    },
+    "afterRecovery": {
+      "deliveredCount": 1,
+      "notificationId": "986dd354-2e2c-4367-a330-8620dbc73303"
+    }
+  },
+  "checks": [
+    {
+      "id": "QA02-A1",
+      "name": "Estado inicial CLOSED con datos LIVE",
+      "ok": true,
+      "detail": "state=CLOSED, X-Data-Source=LIVE, 7.6ms"
+    },
+    {
+      "id": "QA02-A2",
+      "name": "Transición automática CLOSED -> OPEN al caer external-bank-mock",
+      "ok": true,
+      "detail": "state=OPEN, failureRate=60.0%, failedCalls=6"
+    },
+    {
+      "id": "QA02-A3",
+      "name": "Degradación explícita FALLBACK_CACHED + fallbackActive=true",
+      "ok": true,
+      "detail": "fallbackActive=true, asOfDate=2026-11-25"
+    },
+    {
+      "id": "QA02-A4",
+      "name": "Latencia P95 fallback en OPEN < 100 ms",
+      "ok": true,
+      "detail": "p50=4.5ms, p95=5.3ms (n=10)"
+    },
+    {
+      "id": "QA02-A5",
+      "name": "Cálculo financiero 100% operativo durante caída externa",
+      "ok": true,
+      "detail": "HTTP 201, 76.8ms, finalBalance=0.00"
+    },
+    {
+      "id": "QA02-A6",
+      "name": "Auto-recuperación OPEN -> HALF_OPEN -> CLOSED al restaurar proveedor",
+      "ok": true,
+      "detail": "transitions=OPEN -> HALF_OPEN -> CLOSED"
+    },
+    {
+      "id": "QA02-B1",
+      "name": "Emisión de oferta (201 Created) con MS-5 detenido (Outbox -> RabbitMQ)",
+      "ok": true,
+      "detail": "HTTP 201, offerId=ed7d78c1-ee03-4d60-afcd-4f610a419fad, 125ms"
+    },
+    {
+      "id": "QA02-B2",
+      "name": "Entrega diferida e idempotente (exactamente 1 notificación) tras reiniciar MS-5",
+      "ok": true,
+      "detail": "deliveredCount=1, notificationId=986dd354-2e2c-4367-a330-8620dbc73303"
+    }
+  ],
+  "summary": {
+    "passed": 8,
+    "total": 8,
+    "allPassed": true
+  }
+}

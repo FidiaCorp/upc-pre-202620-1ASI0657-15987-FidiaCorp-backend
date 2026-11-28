@@ -1,0 +1,119 @@
+server:
+  port: ${SERVER_PORT:8080}
+  shutdown: graceful
+
+app:
+  internal:
+    token: ${INTERNAL_API_TOKEN:}
+  security:
+    jwt:
+      secret: ${JWT_SECRET}
+    revocation-cache-ms: 2000
+  rate-limit:
+    auth:
+      requests-per-window: ${AUTH_RATE_LIMIT_PER_MINUTE:30}
+      window-seconds: 60
+  routes:
+    identity: ${IDENTITY_SERVICE_URL:http://localhost:8081}
+    catalog: ${CATALOG_SERVICE_URL:http://localhost:8082}
+    pricing: ${PRICING_SERVICE_URL:http://localhost:8083}
+    quotation: ${QUOTATION_SERVICE_URL:http://localhost:8084}
+    communication: ${COMMUNICATION_SERVICE_URL:http://localhost:8085}
+
+spring:
+  application:
+    name: api-gateway
+  cloud:
+    gateway:
+      httpclient:
+        connect-timeout: 2000
+        response-timeout: 30s
+      default-filters:
+        - DedupeResponseHeader=Access-Control-Allow-Origin Access-Control-Allow-Credentials X-Correlation-Id Vary, RETAIN_FIRST
+      globalcors:
+        add-to-simple-url-handler-mapping: true
+        cors-configurations:
+          '[/**]':
+            allowed-origin-patterns: ${CORS_ALLOWED_ORIGIN_PATTERNS:http://localhost:[*],http://127.0.0.1:[*]}
+            allowed-methods: GET,POST,PUT,PATCH,DELETE,OPTIONS
+            allowed-headers: Authorization,Content-Type,Accept,X-Correlation-Id
+            exposed-headers: Content-Disposition,Retry-After,X-Correlation-Id,X-Data-Source,X-Response-Time-Ms,X-Snapshot-Sha256,X-Content-Sha256,X-Quotation-Version
+            allow-credentials: false
+            max-age: 3600
+      routes:
+        - id: identity-subscription-service
+          uri: ${app.routes.identity}
+          predicates:
+            - Path=/api/v1/auth/**,/api/v1/users/**,/api/v1/subscriptions/**,/api/v1/payments/**
+        - id: property-catalog-service
+          uri: ${app.routes.catalog}
+          predicates:
+            - Path=/api/v1/properties,/api/v1/properties/**,/api/v1/ai/**
+        - id: mortgage-pricing-service
+          uri: ${app.routes.pricing}
+          predicates:
+            - Path=/api/v1/simulations,/api/v1/simulations/**,/api/v1/banking/**
+        - id: quotation-deal-service
+          uri: ${app.routes.quotation}
+          predicates:
+            - Path=/api/v1/offers,/api/v1/offers/**,/api/v1/quotations/**
+        - id: communication-notification-service
+          uri: ${app.routes.communication}
+          predicates:
+            - Path=/api/v1/notifications,/api/v1/notifications/**,/api/v1/messages,/api/v1/messages/**
+        # Swagger agregado: /docs/<servicio>/v3/api-docs → /v3/api-docs de cada microservicio.
+        - id: docs-identity
+          uri: ${app.routes.identity}
+          predicates: [Path=/docs/identity/v3/api-docs]
+          filters: [SetPath=/v3/api-docs]
+        - id: docs-catalog
+          uri: ${app.routes.catalog}
+          predicates: [Path=/docs/catalog/v3/api-docs]
+          filters: [SetPath=/v3/api-docs]
+        - id: docs-pricing
+          uri: ${app.routes.pricing}
+          predicates: [Path=/docs/pricing/v3/api-docs]
+          filters: [SetPath=/v3/api-docs]
+        - id: docs-quotation
+          uri: ${app.routes.quotation}
+          predicates: [Path=/docs/quotation/v3/api-docs]
+          filters: [SetPath=/v3/api-docs]
+        - id: docs-communication
+          uri: ${app.routes.communication}
+          predicates: [Path=/docs/communication/v3/api-docs]
+          filters: [SetPath=/v3/api-docs]
+
+springdoc:
+  api-docs:
+    enabled: true
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    urls:
+      - name: identity-subscription-service (MS-1)
+        url: /docs/identity/v3/api-docs
+      - name: property-catalog-service (MS-2)
+        url: /docs/catalog/v3/api-docs
+      - name: mortgage-pricing-service (MS-3)
+        url: /docs/pricing/v3/api-docs
+      - name: quotation-deal-service (MS-4)
+        url: /docs/quotation/v3/api-docs
+      - name: communication-notification-service (MS-5)
+        url: /docs/communication/v3/api-docs
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,gateway
+  endpoint:
+    health:
+      show-details: never
+      probes:
+        enabled: true
+    gateway:
+      enabled: true
+
+logging:
+  level:
+    root: INFO

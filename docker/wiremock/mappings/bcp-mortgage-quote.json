@@ -1,0 +1,20 @@
+{
+  "name": "bcp-mortgage-quote",
+  "request": {
+    "method": "GET",
+    "urlPath": "/banks/bcp/mortgage-quote"
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "jsonBody": {
+      "bank": "BCP",
+      "teaPromedio": 0.082,
+      "plazoMaximoMeses": 300,
+      "ltvMaximo": 0.9,
+      "origen": "external-bank-mock"
+    }
+  }
+}

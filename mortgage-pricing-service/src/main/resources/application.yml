@@ -1,0 +1,91 @@
+server:
+  port: ${SERVER_PORT:8083}
+  shutdown: graceful
+
+spring:
+  application:
+    name: mortgage-pricing-service
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/pricing_db}
+    username: ${SPRING_DATASOURCE_USERNAME:pricing_user}
+    password: ${SPRING_DATASOURCE_PASSWORD:}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+  flyway:
+    enabled: true
+    baseline-on-migrate: false
+    clean-disabled: true
+    validate-on-migrate: true
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+  cache:
+    cache-names: sbsRates
+
+app:
+  internal:
+    token: ${INTERNAL_API_TOKEN:}
+  security:
+    jwt:
+      secret: ${JWT_SECRET}
+  banking:
+    external:
+      enabled: ${BANKING_EXTERNAL_ENABLED:true}
+      base-url: ${BANKING_EXTERNAL_BASE_URL:http://localhost:8090}
+      connect-timeout-ms: 500
+      read-timeout-ms: 1000
+
+# QA-02 (ASR-AVAIL): parámetros exigidos por el handoff para el proveedor bancario externo.
+resilience4j:
+  circuitbreaker:
+    instances:
+      bankingProvider:
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 10
+        minimum-number-of-calls: 10
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 15s
+        permitted-number-of-calls-in-half-open-state: 3
+        automatic-transition-from-open-to-half-open-enabled: true
+        register-health-indicator: true
+        record-exceptions:
+          - com.fidiacorp.credicasa.shared.error.UpstreamServiceException
+          - java.util.concurrent.TimeoutException
+          - java.io.IOException
+  timelimiter:
+    instances:
+      bankingProvider:
+        timeout-duration: 1000ms
+        cancel-running-future: true
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+
+logging:
+  pattern:
+    level: "%5p [${spring.application.name},%X{correlationId:-}]"
+  level:
+    root: INFO
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,circuitbreakers,circuitbreakerevents
+  endpoint:
+    health:
+      show-details: never
+      probes:
+        enabled: true
+  health:
+    circuitbreakers:
+      enabled: false

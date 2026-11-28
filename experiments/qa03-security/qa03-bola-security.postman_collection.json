@@ -1,0 +1,109 @@
+{
+  "info": {
+    "name": "CrediCasa QA-03 Adversarial Security Suite (OWASP API1/API2/API5 - 20 Vectors)",
+    "description": "Colección automatizada de 20 vectores adversariales (BOLA/IDOR, BFLA, JWT lifecycle, revocación y aislamiento de API interna) contra API Gateway :8080 y microservicios CrediCasa.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "V01 - Anonymous blocked on GET /simulations (401)",
+      "request": { "method": "GET", "url": "{{baseUrl}}/simulations" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('V01 Anonymous -> 401', () => pm.response.to.have.status(401));"] } }]
+    },
+    {
+      "name": "V02 - Forged JWT signature rejected (401)",
+      "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhdHRhY2tlciJ9.invalid-sig" }], "url": "{{baseUrl}}/simulations" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('V02 Forged JWT -> 401', () => pm.response.to.have.status(401));"] } }]
+    },
+    {
+      "name": "V03 - Invalid credentials return 401 without detail leak",
+      "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\"email\":\"{{clientEmail}}\",\"password\":\"WrongPassword!999\"}" }, "url": "{{baseUrl}}/auth/login" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('V03 Invalid login -> 401', () => pm.response.to.have.status(401));", "pm.test('No stacktrace leaked', () => pm.expect(pm.response.text()).to.not.include('Exception'));"] } }]
+    },
+    {
+      "name": "V04 - BOLA: Other user cannot read Client simulation (404)",
+      "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{otherToken}}" }], "url": "{{baseUrl}}/simulations/{{simId}}" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('V04 BOLA simulation -> 404', () => pm.response.to.have.status(404));"] } }]
+    },
+    {
+      "name": "V05 - BOLA: Other user cannot export Client XLSX (404)",
+      "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{otherToken}}" }], "url": "{{baseUrl}}/simulations/{{simId}}/export/xlsx" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('V05 BOLA XLSX -> 404', () => pm.response.to.have.status(404));"] } }]
+    },
+    {
+      "name": "V06 - BOLA: Other user cannot read Client credit offer (404)",
+      "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{otherToken}}" }], "url": "{{baseUrl}}/offers/{{offerId}}" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('V06 BOLA offer -> 404', () => pm.response.to.have.status(404));"] } }]
+    },
+    {
+      "name": "V07 - BOLA: Other user cannot list Client offer versions US21 (404)",
+      "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{otherToken}}" }], "url": "{{baseUrl}}/offers/{{offerId}}/versions" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('V07 BOLA versions -> 404', () => pm.response.to.have.status(404));"] } }]
+    },
+    {
+      "name": "V08 - BOLA: Other user cannot export Client offer PDF US22 (404)",
+      "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{otherToken}}" }], "url": "{{baseUrl}}/offers/{{offerId}}/schedule/export/pdf" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('V08 BOLA PDF -> 404', () => pm.response.to.have.status(404));"] } }]
+    },
+    {
+      "name": "V09 - BOLA: Other user cannot view Client export log US22 (404)",
+      "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{otherToken}}" }], "url": "{{baseUrl}}/offers/{{offerId}}/exports" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('V09 BOLA export log -> 404', () => pm.response.to.have.status(404));"] } }]
+    },
+    {
+      "name": "V10 - BOLA: Non-owner cannot delete Realtor property US08 (403/404)",
+      "request": { "method": "DELETE", "header": [{ "key": "Authorization", "value": "Bearer {{otherToken}}" }], "url": "{{baseUrl}}/properties/{{propertyId}}" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('V10 BOLA delete property -> 403/404', () => pm.expect([403,404]).to.include(pm.response.code));"] } }]
+    },
+    {
+      "name": "V11 - BOLA: Non-owner cannot verify SUNARP registry US09 (403)",
+      "request": { "method": "POST", "header": [{ "key": "Authorization", "value": "Bearer {{otherToken}}" }, { "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\"registryNumber\":\"PE-12345678\",\"claimedOwner\":\"Sabotage\"}" }, "url": "{{baseUrl}}/properties/{{propertyId}}/verify-registry" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('V11 BOLA SUNARP verify -> 403', () => pm.response.to.have.status(403));"] } }]
+    },
+    {
+      "name": "V12 - BOLA: Other user cannot mark Client notification read US10 (404)",
+      "request": { "method": "PATCH", "header": [{ "key": "Authorization", "value": "Bearer {{otherToken}}" }], "url": "{{baseUrl}}/notifications/{{notificationId}}/read" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('V12 BOLA notification read -> 404', () => pm.response.to.have.status(404));"] } }]
+    },
+    {
+      "name": "V13 - BOLA: Non-participant cannot inject message into foreign conversation US16 (403)",
+      "request": { "method": "POST", "header": [{ "key": "Authorization", "value": "Bearer {{otherToken}}" }, { "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\"conversationId\":\"{{conversationId}}\",\"recipientId\":\"{{clientId}}\",\"content\":\"Hijack attempt\"}" }, "url": "{{baseUrl}}/messages" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('V13 BOLA message injection -> 403', () => pm.response.to.have.status(403));"] } }]
+    },
+    {
+      "name": "V14 - BOLA: Non-participant cannot export foreign conversation US18 (403)",
+      "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{otherToken}}" }], "url": "{{baseUrl}}/messages/conversations/{{conversationId}}/export/json" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('V14 BOLA chat export -> 403', () => pm.response.to.have.status(403));"] } }]
+    },
+    {
+      "name": "V15 - BOLA/Fraud: Forged payment reference 0.01 PRO rejected US06 (400/422)",
+      "request": { "method": "POST", "header": [{ "key": "Authorization", "value": "Bearer {{otherToken}}" }, { "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\"transactionReference\":\"FAKE-REF-999\",\"paymentMethod\":\"CULQI\",\"amount\":0.01,\"currency\":\"PEN\",\"planName\":\"PRO\"}" }, "url": "{{baseUrl}}/payments/verify" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('V15 Forged PRO payment -> 400/422', () => pm.expect([400,422]).to.include(pm.response.code));"] } }]
+    },
+    {
+      "name": "V16 - BFLA: CLIENT cannot issue credit offer (403)",
+      "request": { "method": "POST", "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }, { "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\"recipientEmail\":\"{{otherEmail}}\",\"propertyId\":\"{{propertyId}}\",\"bankCode\":\"BCP\",\"loanAmount\":\"100000.00\",\"currency\":\"PEN\",\"annualInterestRate\":\"0.085\",\"termMonths\":120,\"startDate\":\"2026-01-31\"}" }, "url": "{{baseUrl}}/offers" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('V16 BFLA client offer -> 403', () => pm.response.to.have.status(403));"] } }]
+    },
+    {
+      "name": "V17 - BFLA: CLIENT cannot create quotation version US21 (403)",
+      "request": { "method": "POST", "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }, { "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\"termMonths\":180}" }, "url": "{{baseUrl}}/offers/{{offerId}}/versions" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('V17 BFLA client version -> 403', () => pm.response.to.have.status(403));"] } }]
+    },
+    {
+      "name": "V18 - Gateway blocks internal API route exposure (404)",
+      "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }], "url": "{{baseUrl}}/internal/accounts/{{clientId}}" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('V18 Internal API hidden -> 404', () => pm.response.to.have.status(404));"] } }]
+    },
+    {
+      "name": "V19 - Gateway blocks path traversal to internal API (400/404)",
+      "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }], "url": "{{baseUrl}}/simulations/..%2Finternal%2Faccounts%2F{{clientId}}" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('V19 Path traversal blocked -> 400/404', () => pm.expect([400,404]).to.include(pm.response.code));"] } }]
+    },
+    {
+      "name": "V20 - Revoked JWT after logout rejected at Gateway (401)",
+      "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{revokedToken}}" }], "url": "{{baseUrl}}/users/me" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('V20 Revoked JWT -> 401', () => pm.response.to.have.status(401));"] } }]
+    }
+  ]
+}
