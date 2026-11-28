@@ -5,7 +5,7 @@
 | Capa | Servicio Microsoft Azure | Configuración / SKU | Rol en CrediCasa | Costo Estimado Mensual |
 |---|---|---|---|---:|
 | **Frontend SPA** | **Azure Static Web Apps** | Free Tier (`TLS 1.3`, CDN global) | Aloja la SPA Vue 3.5 + SPA fallback | US\$ 0.00 |
-| **Edge / Gateway** | **Azure Container Apps** (`api-gateway`) | `0.5 vCPU / 1 GiB`, Ingress HTTPS externo | Único punto de entrada `/api/v1/**`, CORS, rate limit, Swagger agregado | ~US\$ 6.00 |
+| **Edge / Gateway** | **Azure Container Apps** (`api-gateway`) | `0.5 vCPU / 1 GiB`, Ingress HTTPS externo | Único punto de entrada `/api/v1/**`, CORS limitado al hostname exacto de la Static Web App, rate limit, Swagger agregado | ~US\$ 6.00 |
 | **5 Microservicios** | **Azure Container Apps** (5 apps internas) | `0.5 vCPU / 1 GiB` c/u, Ingress interno, probes Startup/Liveness/Readiness | `identity-subscription`, `property-catalog`, `mortgage-pricing`, `quotation-deal`, `communication-notification` | ~US\$ 22.00 |
 | **Base de Datos (PA-05)** | **Azure Database for PostgreSQL Flexible Server** | `Standard_B1ms` (Burstable, 32 GB, SSL) | 5 bases lógicas aisladas (`identity_db`, `property_db`, `pricing_db`, `quotation_db`, `communication_db`) | US\$ 0.00 (12 meses gratis Students) / ~US\$ 12.40 |
 | **Mensajería Asíncrona** | **RabbitMQ** (Container App interna TCP :5672) | `0.25 vCPU / 0.5 GiB` | Broker AMQP para eventos Outbox (`credit.offer.issued.v1`) + DLQ | ~US\$ 3.00 |

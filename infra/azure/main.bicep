@@ -506,7 +506,8 @@ resource gatewayApp 'Microsoft.App/containerApps@2024-03-01' = {
             { name: 'PRICING_SERVICE_URL', value: 'https://${pricingApp.properties.configuration.ingress.fqdn}' }
             { name: 'QUOTATION_SERVICE_URL', value: 'https://${quotationApp.properties.configuration.ingress.fqdn}' }
             { name: 'COMMUNICATION_SERVICE_URL', value: 'https://${communicationApp.properties.configuration.ingress.fqdn}' }
-            { name: 'CORS_ALLOWED_ORIGIN_PATTERNS', value: 'https://*.azurestaticapps.net' }
+            // Solo el hostname exacto de la Static Web App de este despliegue (no cualquier *.azurestaticapps.net)
+            { name: 'CORS_ALLOWED_ORIGIN_PATTERNS', value: 'https://${staticWebApp.properties.defaultHostname}' }
           ]
         }
       ]
