@@ -10,7 +10,9 @@ param(
   [string]$ResourceGroup = "rg-credicasa-prod",
   [string]$Location = "eastus2",
   [string]$Prefix = "credicasa",
-  [string]$ImageTag = "2.0.0"
+  [string]$ImageTag = "2.0.0",
+  # Correos (separados por comas) de cuentas YA registradas que se promueven a ROLE_REALTOR al iniciar identity.
+  [string]$RealtorEmails = ""
 )
 $ErrorActionPreference = 'Stop'
 $backendRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
@@ -66,6 +68,9 @@ try {
   }
 } finally { Pop-Location }
 
+$extraParams = @()
+if (-not [string]::IsNullOrWhiteSpace($RealtorEmails)) { $extraParams += "realtorBootstrapEmails=$RealtorEmails" }
+
 Write-Host "=== 4. Desplegando plantilla Azure Bicep (infra/azure/main.bicep) ===" -ForegroundColor Cyan
 $outputs = az deployment group create `
   --resource-group $ResourceGroup `
@@ -73,7 +78,7 @@ $outputs = az deployment group create `
   --parameters prefix=$Prefix imageTag=$ImageTag acrName=$acrName `
     postgresAdminPassword=$pgPass jwtSecret=$jwtSecret `
     twoFactorEncryptionKey=$tfaKey internalApiToken=$internalToken `
-    paymentSandboxSecret=$paymentSecret rabbitMqPassword=$rabbitPass `
+    paymentSandboxSecret=$paymentSecret rabbitMqPassword=$rabbitPass $extraParams `
   --query properties.outputs -o json | ConvertFrom-Json
 
 Write-Host "`n=== DESPLIEGUE COMPLETADO EN MICROSOFT AZURE ===" -ForegroundColor Green

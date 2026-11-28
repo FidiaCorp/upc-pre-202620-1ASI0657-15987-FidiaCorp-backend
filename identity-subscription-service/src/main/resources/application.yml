@@ -33,6 +33,9 @@ app:
     token: ${INTERNAL_API_TOKEN:}
   e2e:
     fixture-token: ${APP_E2E_FIXTURE_TOKEN:}
+  bootstrap:
+    # Correos (separados por comas) de cuentas ya registradas que se promueven a ROLE_REALTOR al iniciar.
+    realtor-emails: ${REALTOR_BOOTSTRAP_EMAILS:}
   security:
     two-factor:
       encryption-key: ${TWO_FACTOR_ENCRYPTION_KEY:}

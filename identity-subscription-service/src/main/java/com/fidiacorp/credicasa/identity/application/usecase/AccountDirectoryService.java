@@ -38,7 +38,10 @@ public class AccountDirectoryService {
         return accounts.findByEmail(email.strip().toLowerCase(Locale.ROOT)).map(AccountSummaryResponse::from);
     }
 
-    /** Solo para el fixture E2E local: concede ROLE_REALTOR (no existe asignación pública de este rol). */
+    /**
+     * Concede ROLE_REALTOR. No existe asignación pública de este rol: solo lo usan el fixture E2E local y el arranque
+     * controlado por la variable REALTOR_BOOTSTRAP_EMAILS (despliegue en la nube).
+     */
     @Transactional
     public Optional<AccountSummaryResponse> grantRealtor(UUID id) {
         return accounts.findById(id).map(account -> {
@@ -48,5 +51,12 @@ public class AccountDirectoryService {
             return AccountSummaryResponse.from(accounts.save(new Account(account.id(), account.firstName(), account.lastName(),
                     account.email(), account.passwordHash(), roles)));
         });
+    }
+
+    /** Concede ROLE_REALTOR a una cuenta ya registrada, buscándola por correo (vacío si la cuenta no existe). */
+    @Transactional
+    public Optional<AccountSummaryResponse> grantRealtorByEmail(String email) {
+        if (email == null || email.isBlank()) return Optional.empty();
+        return accounts.findByEmail(email.strip().toLowerCase(Locale.ROOT)).flatMap(account -> grantRealtor(account.id()));
     }
 }

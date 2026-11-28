@@ -31,3 +31,16 @@ Cada contenedor Java declara tres probes HTTP sobre Spring Boot Actuator (`manag
 - **Startup** `GET /actuator/health/liveness` (espera inicial 20 s, cada 10 s, hasta 10 fallos) para dar tiempo a Flyway y al arranque de Spring.
 - **Liveness** `GET /actuator/health/liveness` (cada 30 s, 3 fallos) reinicia la réplica si la JVM queda bloqueada.
 - **Readiness** `GET /actuator/health/readiness` (cada 10 s, 3 fallos) saca la réplica del balanceo mientras no esté lista.
+
+## Alta de asesores (ROLE_REALTOR) en la nube
+El rol `ROLE_REALTOR` no se asigna por la API pública y el fixture E2E (`APP_E2E_FIXTURE_TOKEN`) no se habilita en Azure. Para crear un asesor:
+1. Registrar la cuenta desde la aplicación web (queda como `ROLE_CLIENT`).
+2. Indicar su correo en la variable `REALTOR_BOOTSTRAP_EMAILS` de `identity-subscription-service` (varios correos separados por comas), ya sea en el despliegue inicial:
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File ".\infra\azure\deploy-azure.ps1" -ResourceGroup "rg-credicasa-prod" -RealtorEmails "asesor@ejemplo.pe"
+   ```
+   o sobre un entorno ya desplegado (crea una nueva revisión y la reinicia):
+   ```powershell
+   az containerapp update --resource-group rg-credicasa-prod --name identity-subscription-service --set-env-vars REALTOR_BOOTSTRAP_EMAILS=asesor@ejemplo.pe
+   ```
+3. Al arrancar, `RealtorBootstrapRunner` promueve cada cuenta existente a `ROLE_REALTOR` y deja la traza `[SECURITY-AUDIT]` en Log Analytics. Es idempotente; los correos sin cuenta solo generan un aviso. El usuario debe volver a iniciar sesión para recibir un JWT con el nuevo rol.

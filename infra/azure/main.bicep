@@ -55,6 +55,9 @@ param rabbitMqPassword string
 @maxLength(50)
 param acrName string = toLower('${prefix}acr${take(uniqueString(resourceGroup().id), 6)}')
 
+@description('Correos (separados por comas) de cuentas ya registradas que identity-subscription-service promueve a ROLE_REALTOR al iniciar. Vacío = desactivado.')
+param realtorBootstrapEmails string = ''
+
 var uniqueSuffix = take(uniqueString(resourceGroup().id), 6)
 var kvName = toLower('${prefix}kv${uniqueSuffix}')
 var pgServerName = toLower('${prefix}-pg-${uniqueSuffix}')
@@ -274,6 +277,7 @@ resource identityApp 'Microsoft.App/containerApps@2024-03-01' = {
             { name: 'INTERNAL_API_TOKEN', secretRef: 'internal-token' }
             { name: 'PAYMENT_SANDBOX_SECRET', secretRef: 'payment-secret' }
             { name: 'SPRING_FLYWAY_ENABLED', value: 'true' }
+            { name: 'REALTOR_BOOTSTRAP_EMAILS', value: realtorBootstrapEmails }
           ]
         }
       ]
