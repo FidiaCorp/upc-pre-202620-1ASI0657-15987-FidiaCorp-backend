@@ -32,7 +32,7 @@
 
 ## Health probes
 Cada contenedor Java declara tres probes HTTP sobre Spring Boot Actuator (`management.endpoint.health.probes.enabled=true`):
-- **Startup** `GET /actuator/health/liveness` (espera inicial 20 s, cada 10 s, hasta 10 fallos) para dar tiempo a Flyway y al arranque de Spring.
+- **Startup** `GET /actuator/health/liveness` (espera inicial 20 s, cada 15 s, hasta 10 fallos: hasta 170 s) para dar tiempo a Flyway y al arranque de Spring con 0.5 vCPU.
 - **Liveness** `GET /actuator/health/liveness` (cada 30 s, 3 fallos) reinicia la réplica si la JVM queda bloqueada.
 - **Readiness** `GET /actuator/health/readiness` (cada 10 s, 3 fallos) saca la réplica del balanceo mientras no esté lista.
 

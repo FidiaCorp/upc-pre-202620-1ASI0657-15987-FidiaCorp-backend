@@ -264,7 +264,7 @@ resource identityApp 'Microsoft.App/containerApps@2024-03-01' = {
           image: '${acrServer}/credicasa/identity-subscription-service:${imageTag}'
           resources: { cpu: json('0.5'), memory: '1Gi' }
           probes: [
-            { type: 'Startup', httpGet: { path: '/actuator/health/liveness', port: 8081 }, initialDelaySeconds: 20, periodSeconds: 10, timeoutSeconds: 5, failureThreshold: 10 }
+            { type: 'Startup', httpGet: { path: '/actuator/health/liveness', port: 8081 }, initialDelaySeconds: 20, periodSeconds: 15, timeoutSeconds: 5, failureThreshold: 10 }
             { type: 'Liveness', httpGet: { path: '/actuator/health/liveness', port: 8081 }, periodSeconds: 30, timeoutSeconds: 5, failureThreshold: 3 }
             { type: 'Readiness', httpGet: { path: '/actuator/health/readiness', port: 8081 }, periodSeconds: 10, timeoutSeconds: 5, failureThreshold: 3 }
           ]
@@ -311,7 +311,7 @@ resource catalogApp 'Microsoft.App/containerApps@2024-03-01' = {
           image: '${acrServer}/credicasa/property-catalog-service:${imageTag}'
           resources: { cpu: json('0.5'), memory: '1Gi' }
           probes: [
-            { type: 'Startup', httpGet: { path: '/actuator/health/liveness', port: 8082 }, initialDelaySeconds: 20, periodSeconds: 10, timeoutSeconds: 5, failureThreshold: 10 }
+            { type: 'Startup', httpGet: { path: '/actuator/health/liveness', port: 8082 }, initialDelaySeconds: 20, periodSeconds: 15, timeoutSeconds: 5, failureThreshold: 10 }
             { type: 'Liveness', httpGet: { path: '/actuator/health/liveness', port: 8082 }, periodSeconds: 30, timeoutSeconds: 5, failureThreshold: 3 }
             { type: 'Readiness', httpGet: { path: '/actuator/health/readiness', port: 8082 }, periodSeconds: 10, timeoutSeconds: 5, failureThreshold: 3 }
           ]
@@ -355,7 +355,7 @@ resource pricingApp 'Microsoft.App/containerApps@2024-03-01' = {
           image: '${acrServer}/credicasa/mortgage-pricing-service:${imageTag}'
           resources: { cpu: json('0.5'), memory: '1Gi' }
           probes: [
-            { type: 'Startup', httpGet: { path: '/actuator/health/liveness', port: 8083 }, initialDelaySeconds: 20, periodSeconds: 10, timeoutSeconds: 5, failureThreshold: 10 }
+            { type: 'Startup', httpGet: { path: '/actuator/health/liveness', port: 8083 }, initialDelaySeconds: 20, periodSeconds: 15, timeoutSeconds: 5, failureThreshold: 10 }
             { type: 'Liveness', httpGet: { path: '/actuator/health/liveness', port: 8083 }, periodSeconds: 30, timeoutSeconds: 5, failureThreshold: 3 }
             { type: 'Readiness', httpGet: { path: '/actuator/health/readiness', port: 8083 }, periodSeconds: 10, timeoutSeconds: 5, failureThreshold: 3 }
           ]
@@ -400,7 +400,7 @@ resource quotationApp 'Microsoft.App/containerApps@2024-03-01' = {
           image: '${acrServer}/credicasa/quotation-deal-service:${imageTag}'
           resources: { cpu: json('0.5'), memory: '1Gi' }
           probes: [
-            { type: 'Startup', httpGet: { path: '/actuator/health/liveness', port: 8084 }, initialDelaySeconds: 20, periodSeconds: 10, timeoutSeconds: 5, failureThreshold: 10 }
+            { type: 'Startup', httpGet: { path: '/actuator/health/liveness', port: 8084 }, initialDelaySeconds: 20, periodSeconds: 15, timeoutSeconds: 5, failureThreshold: 10 }
             { type: 'Liveness', httpGet: { path: '/actuator/health/liveness', port: 8084 }, periodSeconds: 30, timeoutSeconds: 5, failureThreshold: 3 }
             { type: 'Readiness', httpGet: { path: '/actuator/health/readiness', port: 8084 }, periodSeconds: 10, timeoutSeconds: 5, failureThreshold: 3 }
           ]
@@ -451,7 +451,7 @@ resource communicationApp 'Microsoft.App/containerApps@2024-03-01' = {
           image: '${acrServer}/credicasa/communication-notification-service:${imageTag}'
           resources: { cpu: json('0.5'), memory: '1Gi' }
           probes: [
-            { type: 'Startup', httpGet: { path: '/actuator/health/liveness', port: 8085 }, initialDelaySeconds: 20, periodSeconds: 10, timeoutSeconds: 5, failureThreshold: 10 }
+            { type: 'Startup', httpGet: { path: '/actuator/health/liveness', port: 8085 }, initialDelaySeconds: 20, periodSeconds: 15, timeoutSeconds: 5, failureThreshold: 10 }
             { type: 'Liveness', httpGet: { path: '/actuator/health/liveness', port: 8085 }, periodSeconds: 30, timeoutSeconds: 5, failureThreshold: 3 }
             { type: 'Readiness', httpGet: { path: '/actuator/health/readiness', port: 8085 }, periodSeconds: 10, timeoutSeconds: 5, failureThreshold: 3 }
           ]
@@ -498,7 +498,7 @@ resource gatewayApp 'Microsoft.App/containerApps@2024-03-01' = {
           image: '${acrServer}/credicasa/api-gateway:${imageTag}'
           resources: { cpu: json('0.5'), memory: '1Gi' }
           probes: [
-            { type: 'Startup', httpGet: { path: '/actuator/health/liveness', port: 8080 }, initialDelaySeconds: 20, periodSeconds: 10, timeoutSeconds: 5, failureThreshold: 10 }
+            { type: 'Startup', httpGet: { path: '/actuator/health/liveness', port: 8080 }, initialDelaySeconds: 20, periodSeconds: 15, timeoutSeconds: 5, failureThreshold: 10 }
             { type: 'Liveness', httpGet: { path: '/actuator/health/liveness', port: 8080 }, periodSeconds: 30, timeoutSeconds: 5, failureThreshold: 3 }
             { type: 'Readiness', httpGet: { path: '/actuator/health/readiness', port: 8080 }, periodSeconds: 10, timeoutSeconds: 5, failureThreshold: 3 }
           ]
