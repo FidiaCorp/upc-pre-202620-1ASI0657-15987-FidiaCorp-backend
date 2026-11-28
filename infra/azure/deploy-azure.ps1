@@ -34,11 +34,19 @@ $internalToken = (New-RandomSecret 32)
 $paymentSecret = (New-RandomSecret 32)
 $rabbitPass = "RbMq!" + ([guid]::NewGuid().ToString("N").Substring(0, 14))
 
-Write-Host "=== 3. Aprovisionando ACR inicial para subir las 6 imágenes Docker ===" -ForegroundColor Cyan
-$uniqueAcr = ("${Prefix}acr" + ([guid]::NewGuid().ToString("N").Substring(0, 6))).ToLower()
-az acr create --resource-group $ResourceGroup --name $uniqueAcr --sku Basic --admin-enabled true | Out-Null
-$acrServer = az acr show --name $uniqueAcr --query loginServer -o tsv
-az acr login --name $uniqueAcr
+Write-Host "=== 3. ACR del grupo de recursos (el mismo que usará la plantilla Bicep) ===" -ForegroundColor Cyan
+# Se reutiliza el ACR existente del grupo de recursos para que las re-ejecuciones no creen registros huérfanos;
+# si no hay ninguno, se crea uno nuevo. El nombre se pasa a main.bicep (parámetro acrName), de modo que las
+# Container Apps descargan las imágenes del mismo registro donde se publicaron.
+$acrName = az acr list --resource-group $ResourceGroup --query "[0].name" -o tsv
+if ([string]::IsNullOrWhiteSpace($acrName)) {
+  $acrName = ("${Prefix}acr" + ([guid]::NewGuid().ToString("N").Substring(0, 6))).ToLower()
+  az acr create --resource-group $ResourceGroup --name $acrName --sku Basic --admin-enabled true | Out-Null
+} else {
+  az acr update --name $acrName --admin-enabled true | Out-Null
+}
+$acrServer = az acr show --name $acrName --query loginServer -o tsv
+az acr login --name $acrName
 
 $services = @(
   'api-gateway',
@@ -62,7 +70,7 @@ Write-Host "=== 4. Desplegando plantilla Azure Bicep (infra/azure/main.bicep) ==
 $outputs = az deployment group create `
   --resource-group $ResourceGroup `
   --template-file (Join-Path $PSScriptRoot 'main.bicep') `
-  --parameters prefix=$Prefix imageTag=$ImageTag `
+  --parameters prefix=$Prefix imageTag=$ImageTag acrName=$acrName `
     postgresAdminPassword=$pgPass jwtSecret=$jwtSecret `
     twoFactorEncryptionKey=$tfaKey internalApiToken=$internalToken `
     paymentSandboxSecret=$paymentSecret rabbitMqPassword=$rabbitPass `
@@ -73,4 +81,5 @@ Write-Host "API Gateway HTTPS : $($outputs.gatewayUrl.value)"
 Write-Host "Swagger UI Público: $($outputs.swaggerUiUrl.value)"
 Write-Host "Frontend SWA URL  : $($outputs.frontendUrl.value)"
 Write-Host "PostgreSQL FQDN   : $($outputs.postgresFqdn.value)"
+Write-Host "ACR               : $($outputs.acrLoginServer.value)"
 Write-Host "Key Vault         : $($outputs.keyVaultName.value)"

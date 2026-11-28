@@ -48,8 +48,12 @@ param paymentSandboxSecret string
 @description('Contraseña del usuario AMQP en RabbitMQ')
 param rabbitMqPassword string
 
+@description('Nombre del Azure Container Registry. deploy-azure.ps1 pasa el mismo ACR donde publica las imágenes; si se omite, se usa el nombre determinista del grupo de recursos.')
+@minLength(5)
+@maxLength(50)
+param acrName string = toLower('${prefix}acr${take(uniqueString(resourceGroup().id), 6)}')
+
 var uniqueSuffix = take(uniqueString(resourceGroup().id), 6)
-var acrName = toLower('${prefix}acr${uniqueSuffix}')
 var kvName = toLower('${prefix}kv${uniqueSuffix}')
 var pgServerName = toLower('${prefix}-pg-${uniqueSuffix}')
 var logAnalyticsName = '${prefix}-logs-${uniqueSuffix}'

@@ -21,5 +21,6 @@
    ```powershell
    powershell -ExecutionPolicy Bypass -File ".\infra\azure\deploy-azure.ps1" -ResourceGroup "rg-credicasa-prod" -Location "eastus2"
    ```
+   El script reutiliza el ACR que ya exista en el grupo de recursos (o crea uno), publica allí las 6 imágenes y pasa ese mismo nombre a `main.bicep` (`acrName`), de modo que las Container Apps descargan las imágenes del registro correcto.
 4. En `FidiaCorp-FrontEnd`, configura `VITE_API_BASE_URL=<gatewayUrl>/api/v1` y despliega `dist/` al Static Web App creado (`swa deploy ./dist`).
 5. Verifica `GET <gatewayUrl>/actuator/health` (`200 UP`) y abre `<gatewayUrl>/swagger-ui.html`.
