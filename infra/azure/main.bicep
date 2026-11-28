@@ -2,14 +2,16 @@
 // Arquitectura Cloud Native (Sección 5.4.1 y 5.4.2):
 // - Azure Static Web Apps (Free Tier) para Vue 3 SPA
 // - Azure Container Registry (Basic) para imágenes Docker de los 6 contenedores Java
-// - Azure Container Apps Environment (VNet / red interna privada + Log Analytics)
+// - Azure Container Apps Environment con VNet propia (subred delegada, perfil Consumption) + Log Analytics
 // - Ingress HTTPS TLS 1.3 externo únicamente en api-gateway (:8080)
 // - 5 Microservicios internos (sin exposición pública directa):
 //     identity-subscription-service, property-catalog-service, mortgage-pricing-service,
 //     quotation-deal-service, communication-notification-service
-// - RabbitMQ Container App interno (AMQP :5672)
+// - RabbitMQ Container App interno (AMQP :5672, ingreso TCP: requiere la VNet del entorno)
+// - Health probes Startup/Liveness/Readiness sobre /actuator/health/{liveness,readiness} en los 6 contenedores Java
 // - Azure Database for PostgreSQL Flexible Server (Standard_B1ms) con 5 bases lógicas aisladas (PA-05)
-// - Azure Key Vault para gestión de secretos (JWT, AES-256-GCM 2FA, Internal Token, DB, RabbitMQ)
+// - Azure Key Vault aprovisionado; en esta versión los secretos se inyectan como secretos de Container Apps
+//   (parámetros @secure()) y aún no se referencian desde Key Vault
 
 targetScope = 'resourceGroup'
 
@@ -151,11 +153,38 @@ resource databases 'Microsoft.DBforPostgreSQL/flexibleServers/databases@2023-12-
   }
 }]
 
-// 5. Entorno Azure Container Apps (Red Interna Privada + Log Analytics)
+// 5. Red virtual del entorno: el ingreso TCP interno de RabbitMQ (AMQP :5672) requiere un entorno con VNet propia
+resource vnet 'Microsoft.Network/virtualNetworks@2023-11-01' = {
+  name: '${prefix}-vnet-${uniqueSuffix}'
+  location: location
+  properties: {
+    addressSpace: { addressPrefixes: ['10.40.0.0/16'] }
+    subnets: [
+      {
+        name: 'aca-infra'
+        properties: {
+          addressPrefix: '10.40.0.0/23'
+          delegations: [
+            { name: 'aca-delegation', properties: { serviceName: 'Microsoft.App/environments' } }
+          ]
+        }
+      }
+    ]
+  }
+}
+
+// 6. Entorno Azure Container Apps (VNet propia + perfil Consumption + Log Analytics)
 resource acaEnv 'Microsoft.App/managedEnvironments@2024-03-01' = {
   name: acaEnvName
   location: location
   properties: {
+    vnetConfiguration: {
+      infrastructureSubnetId: vnet.properties.subnets[0].id
+      internal: false
+    }
+    workloadProfiles: [
+      { name: 'Consumption', workloadProfileType: 'Consumption' }
+    ]
     appLogsConfiguration: {
       destination: 'log-analytics'
       logAnalyticsConfiguration: {
@@ -166,12 +195,13 @@ resource acaEnv 'Microsoft.App/managedEnvironments@2024-03-01' = {
   }
 }
 
-// 6. Broker RabbitMQ interno (AMQP)
+// 7. Broker RabbitMQ interno (AMQP)
 resource rabbitmqApp 'Microsoft.App/containerApps@2024-03-01' = {
   name: 'rabbitmq'
   location: location
   properties: {
     managedEnvironmentId: acaEnv.id
+    workloadProfileName: 'Consumption'
     configuration: {
       ingress: {
         external: false
@@ -204,13 +234,14 @@ var pgHost = postgresServer.properties.fullyQualifiedDomainName
 var acrServer = acr.properties.loginServer
 var acrCreds = acr.listCredentials()
 
-// 7. MS-1: identity-subscription-service (Interno :8081)
+// 8. MS-1: identity-subscription-service (Interno :8081)
 resource identityApp 'Microsoft.App/containerApps@2024-03-01' = {
   name: 'identity-subscription-service'
   location: location
   dependsOn: [databases]
   properties: {
     managedEnvironmentId: acaEnv.id
+    workloadProfileName: 'Consumption'
     configuration: {
       registries: [{ server: acrServer, username: acrCreds.username, passwordSecretRef: 'acr-pass' }]
       ingress: { external: false, targetPort: 8081, transport: 'http' }
@@ -229,6 +260,11 @@ resource identityApp 'Microsoft.App/containerApps@2024-03-01' = {
           name: 'identity-subscription-service'
           image: '${acrServer}/credicasa/identity-subscription-service:${imageTag}'
           resources: { cpu: json('0.5'), memory: '1Gi' }
+          probes: [
+            { type: 'Startup', httpGet: { path: '/actuator/health/liveness', port: 8081 }, initialDelaySeconds: 20, periodSeconds: 10, timeoutSeconds: 5, failureThreshold: 10 }
+            { type: 'Liveness', httpGet: { path: '/actuator/health/liveness', port: 8081 }, periodSeconds: 30, timeoutSeconds: 5, failureThreshold: 3 }
+            { type: 'Readiness', httpGet: { path: '/actuator/health/readiness', port: 8081 }, periodSeconds: 10, timeoutSeconds: 5, failureThreshold: 3 }
+          ]
           env: [
             { name: 'SPRING_DATASOURCE_URL', value: 'jdbc:postgresql://${pgHost}:5432/identity_db?sslmode=require' }
             { name: 'SPRING_DATASOURCE_USERNAME', value: 'credicasa_admin' }
@@ -246,13 +282,14 @@ resource identityApp 'Microsoft.App/containerApps@2024-03-01' = {
   }
 }
 
-// 8. MS-2: property-catalog-service (Interno :8082)
+// 9. MS-2: property-catalog-service (Interno :8082)
 resource catalogApp 'Microsoft.App/containerApps@2024-03-01' = {
   name: 'property-catalog-service'
   location: location
   dependsOn: [databases]
   properties: {
     managedEnvironmentId: acaEnv.id
+    workloadProfileName: 'Consumption'
     configuration: {
       registries: [{ server: acrServer, username: acrCreds.username, passwordSecretRef: 'acr-pass' }]
       ingress: { external: false, targetPort: 8082, transport: 'http' }
@@ -269,6 +306,11 @@ resource catalogApp 'Microsoft.App/containerApps@2024-03-01' = {
           name: 'property-catalog-service'
           image: '${acrServer}/credicasa/property-catalog-service:${imageTag}'
           resources: { cpu: json('0.5'), memory: '1Gi' }
+          probes: [
+            { type: 'Startup', httpGet: { path: '/actuator/health/liveness', port: 8082 }, initialDelaySeconds: 20, periodSeconds: 10, timeoutSeconds: 5, failureThreshold: 10 }
+            { type: 'Liveness', httpGet: { path: '/actuator/health/liveness', port: 8082 }, periodSeconds: 30, timeoutSeconds: 5, failureThreshold: 3 }
+            { type: 'Readiness', httpGet: { path: '/actuator/health/readiness', port: 8082 }, periodSeconds: 10, timeoutSeconds: 5, failureThreshold: 3 }
+          ]
           env: [
             { name: 'SPRING_DATASOURCE_URL', value: 'jdbc:postgresql://${pgHost}:5432/property_db?sslmode=require' }
             { name: 'SPRING_DATASOURCE_USERNAME', value: 'credicasa_admin' }
@@ -284,13 +326,14 @@ resource catalogApp 'Microsoft.App/containerApps@2024-03-01' = {
   }
 }
 
-// 9. MS-3: mortgage-pricing-service (Interno :8083)
+// 10. MS-3: mortgage-pricing-service (Interno :8083)
 resource pricingApp 'Microsoft.App/containerApps@2024-03-01' = {
   name: 'mortgage-pricing-service'
   location: location
   dependsOn: [databases]
   properties: {
     managedEnvironmentId: acaEnv.id
+    workloadProfileName: 'Consumption'
     configuration: {
       registries: [{ server: acrServer, username: acrCreds.username, passwordSecretRef: 'acr-pass' }]
       ingress: { external: false, targetPort: 8083, transport: 'http' }
@@ -307,6 +350,11 @@ resource pricingApp 'Microsoft.App/containerApps@2024-03-01' = {
           name: 'mortgage-pricing-service'
           image: '${acrServer}/credicasa/mortgage-pricing-service:${imageTag}'
           resources: { cpu: json('0.5'), memory: '1Gi' }
+          probes: [
+            { type: 'Startup', httpGet: { path: '/actuator/health/liveness', port: 8083 }, initialDelaySeconds: 20, periodSeconds: 10, timeoutSeconds: 5, failureThreshold: 10 }
+            { type: 'Liveness', httpGet: { path: '/actuator/health/liveness', port: 8083 }, periodSeconds: 30, timeoutSeconds: 5, failureThreshold: 3 }
+            { type: 'Readiness', httpGet: { path: '/actuator/health/readiness', port: 8083 }, periodSeconds: 10, timeoutSeconds: 5, failureThreshold: 3 }
+          ]
           env: [
             { name: 'SPRING_DATASOURCE_URL', value: 'jdbc:postgresql://${pgHost}:5432/pricing_db?sslmode=require' }
             { name: 'SPRING_DATASOURCE_USERNAME', value: 'credicasa_admin' }
@@ -322,13 +370,14 @@ resource pricingApp 'Microsoft.App/containerApps@2024-03-01' = {
   }
 }
 
-// 10. MS-4: quotation-deal-service (Interno :8084)
+// 11. MS-4: quotation-deal-service (Interno :8084)
 resource quotationApp 'Microsoft.App/containerApps@2024-03-01' = {
   name: 'quotation-deal-service'
   location: location
   dependsOn: [databases, rabbitmqApp]
   properties: {
     managedEnvironmentId: acaEnv.id
+    workloadProfileName: 'Consumption'
     configuration: {
       registries: [{ server: acrServer, username: acrCreds.username, passwordSecretRef: 'acr-pass' }]
       ingress: { external: false, targetPort: 8084, transport: 'http' }
@@ -346,6 +395,11 @@ resource quotationApp 'Microsoft.App/containerApps@2024-03-01' = {
           name: 'quotation-deal-service'
           image: '${acrServer}/credicasa/quotation-deal-service:${imageTag}'
           resources: { cpu: json('0.5'), memory: '1Gi' }
+          probes: [
+            { type: 'Startup', httpGet: { path: '/actuator/health/liveness', port: 8084 }, initialDelaySeconds: 20, periodSeconds: 10, timeoutSeconds: 5, failureThreshold: 10 }
+            { type: 'Liveness', httpGet: { path: '/actuator/health/liveness', port: 8084 }, periodSeconds: 30, timeoutSeconds: 5, failureThreshold: 3 }
+            { type: 'Readiness', httpGet: { path: '/actuator/health/readiness', port: 8084 }, periodSeconds: 10, timeoutSeconds: 5, failureThreshold: 3 }
+          ]
           env: [
             { name: 'SPRING_DATASOURCE_URL', value: 'jdbc:postgresql://${pgHost}:5432/quotation_db?sslmode=require' }
             { name: 'SPRING_DATASOURCE_USERNAME', value: 'credicasa_admin' }
@@ -367,13 +421,14 @@ resource quotationApp 'Microsoft.App/containerApps@2024-03-01' = {
   }
 }
 
-// 11. MS-5: communication-notification-service (Interno :8085)
+// 12. MS-5: communication-notification-service (Interno :8085)
 resource communicationApp 'Microsoft.App/containerApps@2024-03-01' = {
   name: 'communication-notification-service'
   location: location
   dependsOn: [databases, rabbitmqApp]
   properties: {
     managedEnvironmentId: acaEnv.id
+    workloadProfileName: 'Consumption'
     configuration: {
       registries: [{ server: acrServer, username: acrCreds.username, passwordSecretRef: 'acr-pass' }]
       ingress: { external: false, targetPort: 8085, transport: 'http' }
@@ -391,6 +446,11 @@ resource communicationApp 'Microsoft.App/containerApps@2024-03-01' = {
           name: 'communication-notification-service'
           image: '${acrServer}/credicasa/communication-notification-service:${imageTag}'
           resources: { cpu: json('0.5'), memory: '1Gi' }
+          probes: [
+            { type: 'Startup', httpGet: { path: '/actuator/health/liveness', port: 8085 }, initialDelaySeconds: 20, periodSeconds: 10, timeoutSeconds: 5, failureThreshold: 10 }
+            { type: 'Liveness', httpGet: { path: '/actuator/health/liveness', port: 8085 }, periodSeconds: 30, timeoutSeconds: 5, failureThreshold: 3 }
+            { type: 'Readiness', httpGet: { path: '/actuator/health/readiness', port: 8085 }, periodSeconds: 10, timeoutSeconds: 5, failureThreshold: 3 }
+          ]
           env: [
             { name: 'SPRING_DATASOURCE_URL', value: 'jdbc:postgresql://${pgHost}:5432/communication_db?sslmode=require' }
             { name: 'SPRING_DATASOURCE_USERNAME', value: 'credicasa_admin' }
@@ -411,12 +471,13 @@ resource communicationApp 'Microsoft.App/containerApps@2024-03-01' = {
   }
 }
 
-// 12. Edge: api-gateway (Único ingreso público HTTPS TLS 1.3 :8080)
+// 13. Edge: api-gateway (Único ingreso público HTTPS TLS 1.3 :8080)
 resource gatewayApp 'Microsoft.App/containerApps@2024-03-01' = {
   name: 'api-gateway'
   location: location
   properties: {
     managedEnvironmentId: acaEnv.id
+    workloadProfileName: 'Consumption'
     configuration: {
       registries: [{ server: acrServer, username: acrCreds.username, passwordSecretRef: 'acr-pass' }]
       ingress: { external: true, targetPort: 8080, transport: 'auto', allowInsecure: false }
@@ -432,6 +493,11 @@ resource gatewayApp 'Microsoft.App/containerApps@2024-03-01' = {
           name: 'api-gateway'
           image: '${acrServer}/credicasa/api-gateway:${imageTag}'
           resources: { cpu: json('0.5'), memory: '1Gi' }
+          probes: [
+            { type: 'Startup', httpGet: { path: '/actuator/health/liveness', port: 8080 }, initialDelaySeconds: 20, periodSeconds: 10, timeoutSeconds: 5, failureThreshold: 10 }
+            { type: 'Liveness', httpGet: { path: '/actuator/health/liveness', port: 8080 }, periodSeconds: 30, timeoutSeconds: 5, failureThreshold: 3 }
+            { type: 'Readiness', httpGet: { path: '/actuator/health/readiness', port: 8080 }, periodSeconds: 10, timeoutSeconds: 5, failureThreshold: 3 }
+          ]
           env: [
             { name: 'JWT_SECRET', secretRef: 'jwt-secret' }
             { name: 'INTERNAL_API_TOKEN', secretRef: 'internal-token' }
@@ -449,7 +515,7 @@ resource gatewayApp 'Microsoft.App/containerApps@2024-03-01' = {
   }
 }
 
-// 13. Frontend SPA: Azure Static Web Apps (Free Tier)
+// 14. Frontend SPA: Azure Static Web Apps (Free Tier)
 resource staticWebApp 'Microsoft.Web/staticSites@2023-12-01' = {
   name: swaName
   location: location
